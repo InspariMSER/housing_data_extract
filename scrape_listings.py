@@ -110,8 +110,9 @@ def make_request(zip_code: str, property_type: PropertyType, page: int = 1) -> b
     response = requests.get(url)
     return bs4.BeautifulSoup(response.text, features="html.parser")
 
-def scrape_all_pages(zip_code: str, property_type: PropertyType) -> List[PropertyListing]:
+def scrape_all_pages(zip_code: str, property_type: int) -> List[PropertyListing]:
     """Scrape all pages of listings."""
+    property_type = PropertyType(property_type)  # Convert int to enum
     all_listings = []
     page = 1
     while True:
@@ -124,46 +125,17 @@ def scrape_all_pages(zip_code: str, property_type: PropertyType) -> List[Propert
             page += 1
         except NoListingsError:
             break
+    
+    if not all_listings:
+        print(f"No listings found for zip code {zip_code}")
+    else:
+        filename = format_filename(zip_code)
+        Path('listings').mkdir(exist_ok=True)
+        df = pandas.DataFrame(all_listings)
+        df.to_csv(f'listings/{filename}', index=False)
+    
     return all_listings
 
 def format_filename(zip_code: str) -> str:
     """Format the output csv file name."""
     return f'listings_{zip_code}.csv'
-
-def get_zip_code() -> str:
-    """Get zip code from user input."""
-    while True:
-        zip_code = input("Enter zip code (4 digits): ")
-        if re.match(r'^\d{4}$', zip_code):
-            return zip_code
-        print("Invalid zip code. Please enter 4 digits.")
-
-def get_property_type() -> PropertyType:
-    """Get property type from user input using integer values."""
-    print("\nAvailable property types:")
-    for prop_type in PropertyType:
-        print(f"{prop_type.value}: {prop_type.name}")
-    
-    while True:
-        try:
-            choice = int(input("\nEnter property type number: "))
-            return next(pt for pt in PropertyType if pt.value == choice)
-        except ValueError:
-            print("Please enter a valid number.")
-        except StopIteration:
-            print("Invalid property type number. Please choose from the list above.")
-
-zip_code = get_zip_code()
-property_type = get_property_type()
-
-rows = scrape_all_pages(zip_code, property_type)
-if not rows:
-    print(f"No listings found for zip code {zip_code}")
-else:
-    filename = format_filename(zip_code)
-    Path('listings').mkdir(exist_ok=True)
-    df = pandas.DataFrame(rows)
-    df.to_csv(f'listings/{filename}', index=False)
-    print(f"\nScraped {len(rows)} listings to {filename}")
-    print("\nSample of scraped data:")
-    print(df.head())

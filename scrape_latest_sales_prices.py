@@ -35,10 +35,16 @@ class NoSoldListError(Exception):
 
 
 class PropertyType(Enum):
-    house = 1
-    terrace_house = 2
-    villa_apartment = 3
-    summerhouse = 4
+    Hus = 1
+    Raekkehus = 2
+    Ejerlejlighed = 3
+    Fritidshus = 4
+    Andelsbolig = 5
+    Landejendom = 6
+    Helårsgrund = 7
+    Fritidsgrund = 8
+    Villalejlighed = 9
+    Andet = 10
 
 
 address_pattern = (r'(?P<street>[\D ]+)(?P<number>\d+[A-Z]?),?( (?P<floor>(kl\.?|st\.?|(\d+).?)( th| tv| mf| \d+)?))? (?P<zip>\d{4}) (?P<city>[\D ]+)')
@@ -183,37 +189,9 @@ def format_filename(zip_code: str) -> str:
     return f'sales_prices_{zip_code}.csv'
 
 
-def get_zip_code() -> str:
-    """Get zip code from user input."""
-    while True:
-        zip_code = input("Enter zip code (4 digits): ")
-        if re.match(r'^\d{4}$', zip_code):
-            return zip_code
-        print("Invalid zip code. Please enter 4 digits.")
-
-def get_property_type() -> PropertyType:
-    """Get property type from user input using integer values."""
-    print("\nAvailable property types:")
-    for prop_type in PropertyType:
-        print(f"{prop_type.value}: {prop_type.name}")
-    
-    while True:
-        try:
-            choice = int(input("\nEnter property type number: "))
-            return next(pt for pt in PropertyType if pt.value == choice)
-        except ValueError:
-            print("Please enter a valid number.")
-        except StopIteration:
-            print("Invalid property type number. Please choose from the list above.")
-
-@main
-def _() -> None:
-    """
-    Scrape sales prices from boliga.dk with interactive input
-    """
-    zip_code = get_zip_code()
-    property_type = get_property_type()
-    
+def scrape_sales(zip_code: str, property_type: int) -> List[Row]:
+    """Scrape sales data for given zip code and property type."""
+    property_type = PropertyType(property_type)  # Convert int to enum
     soup = make_request(zip_code, property_type)
     rows = []
     try:
@@ -224,3 +202,4 @@ def _() -> None:
     filename = format_filename(zip_code)
     Path('data').mkdir(exist_ok=True)
     pandas.DataFrame(rows).to_csv('data/'+filename, index=False)
+    return rows

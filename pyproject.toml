@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "house-price-predictor"
+name = "housing-data-extract"
 version = "0.1.0"
 description = ""
 authors = ["Mathias Svante <mser@inspari.dk>"]
@@ -7,11 +7,6 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.12"
-beautifulsoup4 = "^4.12.3"
-requests = "^2.32.3"
-pandas = "^2.2.3"
-plotly = "^5.24.1"
-main-dec = "^0.1.1"
 
 
 [build-system]
