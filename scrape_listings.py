@@ -1,5 +1,3 @@
-
-
 """Script for scraping current property listings from boliga.dk."""
 
 from typing import List, TypedDict, Match
@@ -43,7 +41,8 @@ class PropertyType(Enum):
 def scrape_listings(soup: bs4.BeautifulSoup) -> List[PropertyListing]:
     """Scrape all current listings from boliga response."""
     script_tag = soup.find('script', {'id': 'boliga-app-state'})
-    if not script_tag:
+    if not script_tag or not script_tag.string:
+        logging.error("Could not find boliga app state or script content is empty")
         raise NoListingsError()
 
     # Clean up the JSON string
@@ -52,11 +51,18 @@ def scrape_listings(soup: bs4.BeautifulSoup) -> List[PropertyListing]:
 
     try:
         data = json.loads(json_str)
-    except json.JSONDecodeError:
-        logging.error("Failed to parse JSON data")
+        if not data:
+            logging.error("Parsed JSON data is empty")
+            raise NoListingsError()
+            
+        results = data.get('search-service-perform', {}).get('results', [])
+        if not results:
+            logging.error("No results found in JSON data")
+            raise NoListingsError()
+            
+    except json.JSONDecodeError as e:
+        logging.error(f"Failed to parse JSON data: {e}")
         raise NoListingsError()
-
-    results = data.get('search-service-perform', {}).get('results', [])
 
     rows = []
     for listing in results:
@@ -109,31 +115,47 @@ def make_request(zip_code: str, property_type: PropertyType, page: int = 1) -> b
     """Make request to boliga.dk listings."""
     url = f'https://www.boliga.dk/resultat?zipCodes={zip_code}&propertyType={property_type.value}&page={page}'
     logging.info(f'Request url: {url}')
-    response = requests.get(url)
-    return bs4.BeautifulSoup(response.text, features="html.parser")
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Raise an exception for bad status codes
+        return bs4.BeautifulSoup(response.text, features="html.parser")
+    except requests.RequestException as e:
+        logging.error(f"Failed to fetch URL {url}: {e}")
+        raise NoListingsError()
 
 def scrape_all_pages(zip_code: str, property_type: int) -> List[PropertyListing]:
     """Scrape all pages of listings."""
+    logging.info(f"Starting scrape for zip code {zip_code}")
     property_type = PropertyType(property_type)  # Convert int to enum
     all_listings = []
     page = 1
-    while True:
-        soup = make_request(zip_code, property_type, page)
-        try:
-            new_listings = scrape_listings(soup)
-            if not new_listings:
+    
+    try:
+        while True:
+            soup = make_request(zip_code, property_type, page)
+            try:
+                new_listings = scrape_listings(soup)
+                if not new_listings:
+                    logging.info(f"No more listings found for zip {zip_code} after page {page-1}")
+                    break
+                logging.info(f"Found {len(new_listings)} listings on page {page}")
+                all_listings.extend(new_listings)
+                page += 1
+            except NoListingsError:
+                logging.info(f"No listings found on page {page}")
                 break
-            all_listings.extend(new_listings)
-            page += 1
-        except NoListingsError:
-            break
+    except Exception as e:
+        logging.error(f"Error during scraping: {e}")
+        return []
     
     if not all_listings:
-        print(f"No listings found for zip code {zip_code}")
-    else:
-        df = pandas.DataFrame(all_listings)
-        from delta_utils import write_to_delta
-        write_to_delta(df, "listings")
+        logging.warning(f"No listings found for zip code {zip_code}")
+        return []
+        
+    logging.info(f"Successfully scraped {len(all_listings)} total listings")
+    df = pandas.DataFrame(all_listings)
+    from delta_utils import write_to_delta
+    write_to_delta(df, "listings")
     
     return all_listings
 
