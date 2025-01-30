@@ -1,6 +1,6 @@
 import datetime
 from main_dec import main
-from utils import predict_sales_price
+from utils import predict_sales_price, postnumre_array
 from delta_utils import read_from_delta
 
 def get_house_area() -> int:
@@ -15,9 +15,11 @@ def get_house_area() -> int:
             print("Please enter a valid number.")
 
 def get_available_zip_codes() -> list[str]:
-    """Get list of available zip codes from Delta table."""
+    """Get list of available and valid zip codes from Delta table."""
     df = read_from_delta("salesprices")
-    return sorted(df['zip_code'].unique().tolist())
+    valid_zip_codes = set(str(code) for code in postnumre_array)
+    available_codes = df['zip_code'].unique().tolist()
+    return sorted([code for code in available_codes if code in valid_zip_codes])
 
 def select_zip_code() -> str:
     """Let user select a zip code."""
