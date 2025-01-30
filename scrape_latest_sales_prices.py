@@ -17,8 +17,8 @@ from main_dec import main
 
 class Row(TypedDict):
     """A row of sales price data."""
-
     address: str
+    city: str  # Add city field
     zip_code: str
     price: float
     date: str
@@ -51,7 +51,7 @@ address_pattern = (r'(?P<street>[\D ]+)(?P<number>\d+[A-Z]?),?( (?P<floor>(kl\.?
 
 
 def scrape_prices(soup: bs4.BeautifulSoup) -> List[Row]:
-    """Scrape all sales prices from the sold table in a boliga response.."""
+    """Scrape all sales prices from the sold table in a boliga response."""
     if not soup.find_all('app-sold-list-table'):
         raise NoSoldListError()
     table = soup.find_all('app-sold-list-table')[0].table
@@ -60,7 +60,7 @@ def scrape_prices(soup: bs4.BeautifulSoup) -> List[Row]:
     for row in table.find_all('tr'):
         columns = row.find_all('td')
 
-        street   = scrape_street(columns)
+        street, city = scrape_street(columns)
         zip_code = scrape_zip_code(columns)
         price    = scrape_price(columns)
         date     = scrape_date(columns)
@@ -75,6 +75,7 @@ def scrape_prices(soup: bs4.BeautifulSoup) -> List[Row]:
 
         rows.append(Row({
             'address' : street,
+            'city'    : city,
             'zip_code': zip_code,
             'price'   : float(price),
             'date'    : date,
@@ -158,13 +159,21 @@ def replace_danish_chars(text: str) -> str:
         text = text.replace(danish, ascii_equiv)
     return text
 
-def scrape_street(columns: bs4.element.ResultSet) -> str:
-    """Scrape the street name and no. from a row in the boliga sold table."""
+def scrape_street(columns: bs4.element.ResultSet) -> tuple[str, str]:
+    """Scrape the street name, no. and city from a row in the boliga sold table."""
     m = match_address(columns)
     street = f'{m.group("street")} {m.group("number")}'
     if m.group('floor') is not None:
         street += f' {m.group("floor")}'
-    return replace_danish_chars(street)
+    
+    # Handle addresses with commas
+    city = m.group('city').strip()
+    if ',' in street:
+        address_parts = street.split(',')
+        street = address_parts[0].strip()
+        city = address_parts[1].strip()
+        
+    return replace_danish_chars(street), replace_danish_chars(city)
 
 
 def scrape_zip_code(columns: bs4.element.ResultSet) -> str:
