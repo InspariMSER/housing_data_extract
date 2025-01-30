@@ -1,3 +1,5 @@
+
+
 """Script for scraping current property listings from boliga.dk."""
 
 from typing import List, TypedDict, Match
