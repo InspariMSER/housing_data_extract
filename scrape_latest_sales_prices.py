@@ -208,7 +208,9 @@ def scrape_sales(zip_code: str, property_type: int) -> List[Row]:
     except NoSoldListError:
         logging.warning(f'No results found for zip code {zip_code}')
     
-    filename = format_filename(zip_code)
-    Path('data').mkdir(exist_ok=True)
-    pandas.DataFrame(rows).to_csv('data/'+filename, index=False)
+    if rows:
+        df = pandas.DataFrame(rows)
+        from delta_utils import write_to_delta
+        write_to_delta(df, "salesprices")
+    
     return rows

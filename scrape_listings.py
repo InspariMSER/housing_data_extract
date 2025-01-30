@@ -129,10 +129,9 @@ def scrape_all_pages(zip_code: str, property_type: int) -> List[PropertyListing]
     if not all_listings:
         print(f"No listings found for zip code {zip_code}")
     else:
-        filename = format_filename(zip_code)
-        Path('listings').mkdir(exist_ok=True)
         df = pandas.DataFrame(all_listings)
-        df.to_csv(f'listings/{filename}', index=False)
+        from delta_utils import write_to_delta
+        write_to_delta(df, "listings")
     
     return all_listings
 
