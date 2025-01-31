@@ -1,6 +1,7 @@
 """Script for scraping sales prices from boliga.dk."""
 
 from typing import List, TypedDict, Match
+from datetime import datetime
 import argparse
 import urllib.parse
 import re
@@ -26,6 +27,7 @@ class Row(TypedDict):
     m2: str
     built: str
     m2_price: float
+    loaded_at_utc: datetime
 
 
 class NoSoldListError(Exception):
@@ -198,13 +200,16 @@ def format_filename(zip_code: str) -> str:
     return f'sales_prices_{zip_code}.csv'
 
 
-def scrape_sales(zip_code: str, property_type: int) -> List[Row]:
+def scrape_sales(zip_code: str, property_type: int, load_timestamp: datetime) -> List[Row]:
     """Scrape sales data for given zip code and property type."""
     property_type = PropertyType(property_type)  # Convert int to enum
     soup = make_request(zip_code, property_type)
     rows = []
     try:
         rows = scrape_prices(soup)
+        # Add timestamp to all rows
+        for row in rows:
+            row['loaded_at_utc'] = load_timestamp
     except NoSoldListError:
         logging.warning(f'No results found for zip code {zip_code}')
     

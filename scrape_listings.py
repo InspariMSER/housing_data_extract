@@ -5,6 +5,7 @@ import re
 import logging
 from pathlib import Path
 from enum import Enum
+from datetime import datetime
 
 import requests
 import bs4  # type: ignore
@@ -21,6 +22,8 @@ class PropertyListing(TypedDict):
     m2: str
     built: str
     m2_price: float
+    days_on_market: int
+    loaded_at_utc: datetime
 
 class NoListingsError(Exception):
     """Error used when the boliga response contains no listings."""
@@ -123,7 +126,7 @@ def make_request(zip_code: str, property_type: PropertyType, page: int = 1) -> b
         logging.error(f"Failed to fetch URL {url}: {e}")
         raise NoListingsError()
 
-def scrape_all_pages(zip_code: str, property_type: int) -> List[PropertyListing]:
+def scrape_all_pages(zip_code: str, property_type: int, load_timestamp: datetime) -> List[PropertyListing]:
     """Scrape all pages of listings."""
     logging.info(f"Starting scrape for zip code {zip_code}")
     property_type = PropertyType(property_type)  # Convert int to enum
@@ -151,6 +154,10 @@ def scrape_all_pages(zip_code: str, property_type: int) -> List[PropertyListing]
     if not all_listings:
         logging.warning(f"No listings found for zip code {zip_code}")
         return []
+
+    # Add timestamp to all listings
+    for listing in all_listings:
+        listing['loaded_at_utc'] = load_timestamp
         
     logging.info(f"Successfully scraped {len(all_listings)} total listings")
     df = pandas.DataFrame(all_listings)
