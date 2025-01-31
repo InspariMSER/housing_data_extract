@@ -1,5 +1,0 @@
-beautifulsoup4
-requests
-pandas
-plotly
-main-dec

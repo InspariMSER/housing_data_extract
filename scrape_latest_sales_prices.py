@@ -1,7 +1,6 @@
 """Script for scraping sales prices from boliga.dk."""
 
 from typing import List, TypedDict, Match
-from datetime import datetime
 import argparse
 import urllib.parse
 import re
@@ -18,8 +17,8 @@ from main_dec import main
 
 class Row(TypedDict):
     """A row of sales price data."""
+
     address: str
-    city: str  # Add city field
     zip_code: str
     price: float
     date: str
@@ -27,7 +26,6 @@ class Row(TypedDict):
     m2: str
     built: str
     m2_price: float
-    loaded_at_utc: datetime
 
 
 class NoSoldListError(Exception):
@@ -53,7 +51,7 @@ address_pattern = (r'(?P<street>[\D ]+)(?P<number>\d+[A-Z]?),?( (?P<floor>(kl\.?
 
 
 def scrape_prices(soup: bs4.BeautifulSoup) -> List[Row]:
-    """Scrape all sales prices from the sold table in a boliga response."""
+    """Scrape all sales prices from the sold table in a boliga response.."""
     if not soup.find_all('app-sold-list-table'):
         raise NoSoldListError()
     table = soup.find_all('app-sold-list-table')[0].table
@@ -62,7 +60,7 @@ def scrape_prices(soup: bs4.BeautifulSoup) -> List[Row]:
     for row in table.find_all('tr'):
         columns = row.find_all('td')
 
-        street, city = scrape_street(columns)
+        street   = scrape_street(columns)
         zip_code = scrape_zip_code(columns)
         price    = scrape_price(columns)
         date     = scrape_date(columns)
@@ -77,7 +75,6 @@ def scrape_prices(soup: bs4.BeautifulSoup) -> List[Row]:
 
         rows.append(Row({
             'address' : street,
-            'city'    : city,
             'zip_code': zip_code,
             'price'   : float(price),
             'date'    : date,
@@ -161,21 +158,13 @@ def replace_danish_chars(text: str) -> str:
         text = text.replace(danish, ascii_equiv)
     return text
 
-def scrape_street(columns: bs4.element.ResultSet) -> tuple[str, str]:
-    """Scrape the street name, no. and city from a row in the boliga sold table."""
+def scrape_street(columns: bs4.element.ResultSet) -> str:
+    """Scrape the street name and no. from a row in the boliga sold table."""
     m = match_address(columns)
     street = f'{m.group("street")} {m.group("number")}'
     if m.group('floor') is not None:
         street += f' {m.group("floor")}'
-    
-    # Handle addresses with commas
-    city = m.group('city').strip()
-    if ',' in street:
-        address_parts = street.split(',')
-        street = address_parts[0].strip()
-        city = address_parts[1].strip()
-        
-    return replace_danish_chars(street), replace_danish_chars(city)
+    return replace_danish_chars(street)
 
 
 def scrape_zip_code(columns: bs4.element.ResultSet) -> str:
@@ -200,22 +189,17 @@ def format_filename(zip_code: str) -> str:
     return f'sales_prices_{zip_code}.csv'
 
 
-def scrape_sales(zip_code: str, property_type: int, load_timestamp: datetime) -> List[Row]:
+def scrape_sales(zip_code: str, property_type: int) -> List[Row]:
     """Scrape sales data for given zip code and property type."""
     property_type = PropertyType(property_type)  # Convert int to enum
     soup = make_request(zip_code, property_type)
     rows = []
     try:
         rows = scrape_prices(soup)
-        # Add timestamp to all rows
-        for row in rows:
-            row['loaded_at_utc'] = load_timestamp
     except NoSoldListError:
         logging.warning(f'No results found for zip code {zip_code}')
     
-    if rows:
-        df = pandas.DataFrame(rows)
-        from delta_utils import write_to_delta
-        write_to_delta(df, "salesprices")
-    
+    filename = format_filename(zip_code)
+    Path('data').mkdir(exist_ok=True)
+    pandas.DataFrame(rows).to_csv('data/'+filename, index=False)
     return rows
