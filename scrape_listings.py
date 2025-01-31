@@ -15,9 +15,22 @@ import json  # Add this import at the top of the file
 from pyspark.sql import SparkSession
 from delta.tables import DeltaTable
 
+def split_address(address: str) -> tuple[str, int]:
+    """Split address into street name and house number."""
+    # Remove any floor information (e.g., '4. th', 'st.')
+    address = re.sub(r'\s+(?:\d+\.?|st\.?|kl\.?)\s*(?:th|tv|mf)?(?=[,\s]|$)', '', address)
+    
+    # Match street name and number
+    match = re.match(r'^(.*?)\s*(\d+)\s*[A-Za-z]?$', address.strip())
+    if match:
+        street, number = match.groups()
+        return street.strip(), int(number)
+    return address.strip(), 0
+
 class PropertyListing(TypedDict):
     """A row of listing data."""
-    address: str
+    address_text: str  # Changed from address
+    house_number: int  # New field
     zip_code: str
     price: float
     rooms: str
@@ -88,6 +101,9 @@ def scrape_listings(soup: bs4.BeautifulSoup) -> List[PropertyListing]:
                 address = address_parts[0].strip()
                 city = address_parts[1].strip()
 
+            # Split address into text and number
+            address_text, house_number = split_address(address)
+
             # Get other fields with safe fallbacks
             zip_code = str(listing.get('zipCode', ''))
             price = float(listing.get('price', 0))
@@ -103,7 +119,8 @@ def scrape_listings(soup: bs4.BeautifulSoup) -> List[PropertyListing]:
                 continue
 
             rows.append(PropertyListing({
-                'address': replace_danish_chars(address),
+                'address_text': replace_danish_chars(address_text),
+                'house_number': house_number,
                 'city': replace_danish_chars(city),
                 'zip_code': zip_code,
                 'price': price,

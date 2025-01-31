@@ -18,10 +18,23 @@ from pyspark.sql import SparkSession
 from delta.tables import DeltaTable
 
 
+def split_address(address: str) -> tuple[str, int]:
+    """Split address into street name and house number."""
+    # Remove any floor information (e.g., '4. th', 'st.')
+    address = re.sub(r'\s+(?:\d+\.?|st\.?|kl\.?)\s*(?:th|tv|mf)?(?=[,\s]|$)', '', address)
+    
+    # Match street name and number
+    match = re.match(r'^(.*?)\s*(\d+)\s*[A-Za-z]?$', address.strip())
+    if match:
+        street, number = match.groups()
+        return street.strip(), int(number)
+    return address.strip(), 0
+
+
 class Row(TypedDict):
     """A row of sales price data."""
-
-    address: str
+    address_text: str  # Changed from address
+    house_number: int  # New field
     zip_code: str
     city: str  # Add city field
     price: float
@@ -70,7 +83,7 @@ def scrape_prices(soup: bs4.BeautifulSoup) -> List[Row]:
     for row in table.find_all('tr'):
         columns = row.find_all('td')
 
-        street, city = scrape_street_and_city(columns)
+        street, city, house_number = scrape_street_and_city(columns)
         zip_code = scrape_zip_code(columns)
         price    = scrape_price(columns)
         date     = scrape_date(columns)
@@ -84,7 +97,8 @@ def scrape_prices(soup: bs4.BeautifulSoup) -> List[Row]:
             m2_price = math.nan
 
         rows.append(Row({
-            'address' : street,
+            'address_text': street,
+            'house_number': house_number,
             'city': city,
             'zip_code': zip_code,
             'price'   : float(price),
@@ -177,20 +191,20 @@ def clean_address(address: str) -> str:
     address = re.sub(r'(st|th|tv|mf)\.', r'\1', address)
     return address
 
-def scrape_street_and_city(columns: bs4.element.ResultSet) -> tuple[str, str]:
-    """Scrape the street name, no. and city from a row in the boliga sold table."""
+def scrape_street_and_city(columns: bs4.element.ResultSet) -> tuple[str, str, int]:
+    """Scrape the street name, house number and city from a row."""
     full_address = columns[0].find(attrs={'data-gtm': 'sales_address'}).text.strip()
     full_address = clean_address(full_address)
     
-    # First check if there's a comma in the full address
     if ',' in full_address:
         address_parts = full_address.split(',')
-        street = address_parts[0].strip()
+        address = address_parts[0].strip()
         remaining = address_parts[1].strip()
+        address_text, house_number = split_address(address)
         # Extract zip and city from remaining part
         zip_city_match = re.search(r'(\d{4})\s*(.+)', remaining)
         city = zip_city_match.group(2) if zip_city_match else remaining
-        return replace_danish_chars(street), replace_danish_chars(city)
+        return address_text, replace_danish_chars(city), house_number
     
     # If no comma, use the regular pattern matching
     m = re.match(address_pattern, full_address)
@@ -201,7 +215,8 @@ def scrape_street_and_city(columns: bs4.element.ResultSet) -> tuple[str, str]:
         if simple_match:
             street = simple_match.group(1)
             city = simple_match.group(3)
-            return replace_danish_chars(street), replace_danish_chars(city)
+            address_text, house_number = split_address(street)
+            return address_text, replace_danish_chars(city), house_number
         raise ValueError(f'Malformed address: {full_address}')
     
     street = m.group("street").strip()
@@ -210,8 +225,9 @@ def scrape_street_and_city(columns: bs4.element.ResultSet) -> tuple[str, str]:
     if m.group('floor'):
         street += f' {m.group("floor")}'
     city = m.group('city').strip()
+    address_text, house_number = split_address(street)
     
-    return replace_danish_chars(street), replace_danish_chars(city)
+    return address_text, replace_danish_chars(city), house_number
 
 
 def scrape_zip_code(columns: bs4.element.ResultSet) -> str:
