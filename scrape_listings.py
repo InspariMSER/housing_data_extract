@@ -5,6 +5,7 @@ import re
 import logging
 from pathlib import Path
 from enum import Enum
+from datetime import datetime
 
 import requests
 import bs4  # type: ignore
@@ -23,6 +24,9 @@ class PropertyListing(TypedDict):
     m2: str
     built: str
     m2_price: float
+    property_type_id: int
+    property_type_name: str
+    loaded_at_utc: datetime
 
 class NoListingsError(Exception):
     """Error used when the boliga response contains no listings."""
@@ -151,17 +155,25 @@ def write_to_delta(listings: List[PropertyListing]):
         .mode("append") \
         .saveAsTable("mser_delta_lake.housing.listings")
 
-def scrape_all_pages(zip_code: str, property_type: int) -> List[PropertyListing]:
+def scrape_all_pages(zip_code: str, property_type: int, loaded_at_utc: datetime) -> List[PropertyListing]:
     """Scrape all pages of listings."""
-    property_type = PropertyType(property_type)  # Convert int to enum
+    property_type_enum = PropertyType(property_type)
     all_listings = []
     page = 1
+    
     while True:
-        soup = make_request(zip_code, property_type, page)
+        soup = make_request(zip_code, property_type_enum, page)
         try:
             new_listings = scrape_listings(soup)
             if not new_listings:
                 break
+                
+            # Add property type and timestamp to each listing
+            for listing in new_listings:
+                listing['property_type_id'] = property_type
+                listing['property_type_name'] = PropertyType(property_type).name.lower()
+                listing['loaded_at_utc'] = loaded_at_utc
+                
             all_listings.extend(new_listings)
             page += 1
         except NoListingsError:

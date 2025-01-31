@@ -8,6 +8,7 @@ from scrape_listings import scrape_all_pages as scrape_listings
 from scrape_latest_sales_prices import scrape_sales
 from utils import zipcodes
 from pyspark.sql import SparkSession
+from datetime import datetime
 
 class PropertyType(Enum):
     Hus = 1
@@ -29,21 +30,6 @@ def get_zip_code() -> str:
             return zip_code
         print("Invalid zip code. Please enter 4 digits.")
 
-def get_property_type() -> int:
-    """Get property type from user input using integer values."""
-    print("\nAvailable property types:")
-    for prop_type in PropertyType:
-        print(f"{prop_type.value}: {prop_type.name}")
-    
-    while True:
-        try:
-            choice = int(input("\nEnter property type number: "))
-            if 1 <= choice <= 10:
-                return choice
-            print("Please enter a number between 1 and 10.")
-        except ValueError:
-            print("Please enter a valid number.")
-
 def init_spark():
     """Initialize Spark session."""
     return SparkSession.builder \
@@ -52,8 +38,9 @@ def init_spark():
 
 def main():
     spark = init_spark()
-    property_type = get_property_type()
-
+    property_type = 1  # Fixed to "Hus"
+    loaded_at_utc = datetime.utcnow()
+    
     # Drop and recreate table
     spark.sql("DROP TABLE IF EXISTS mser_delta_lake.housing.listings")
     
@@ -63,11 +50,11 @@ def main():
         
         try:
             print("Scraping current listings...")
-            scrape_listings(zip_code_str, property_type)
+            scrape_listings(zip_code_str, property_type, loaded_at_utc)
             
             print("Scraping recent sales...")
-            scrape_sales(zip_code_str, property_type)
-
+            scrape_sales(zip_code_str, property_type, loaded_at_utc)
+            
             print(f"Done with zip code: {zip_code_str}")
         except Exception as e:
             logging.error(f"Error processing zip code {zip_code_str}: {str(e)}")

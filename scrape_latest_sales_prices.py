@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 from enum import Enum
 import math
+from datetime import datetime
 
 import requests
 import bs4  # type: ignore
@@ -29,6 +30,9 @@ class Row(TypedDict):
     m2: str
     built: str
     m2_price: float
+    property_type_id: int
+    property_type_name: str
+    loaded_at_utc: datetime
 
 
 class NoSoldListError(Exception):
@@ -248,13 +252,18 @@ def write_to_delta(sales: List[Row]):
         .option("mergeSchema", "true") \
         .saveAsTable("mser_delta_lake.housing.sales_prices")
 
-def scrape_sales(zip_code: str, property_type: int) -> List[Row]:
+def scrape_sales(zip_code: str, property_type: int, loaded_at_utc: datetime) -> List[Row]:
     """Scrape sales data for given zip code and property type."""
-    property_type = PropertyType(property_type)
-    soup = make_request(zip_code, property_type)
+    property_type_enum = PropertyType(property_type)
+    soup = make_request(zip_code, property_type_enum)
     rows = []
     try: 
         rows = scrape_prices(soup)
+        # Add property type and timestamp to each row
+        for row in rows:
+            row['property_type_id'] = property_type
+            row['property_type_name'] = PropertyType(property_type).name.lower()
+            row['loaded_at_utc'] = loaded_at_utc
     except NoSoldListError:
         logging.warning(f'No results found for zip code {zip_code}')
     
