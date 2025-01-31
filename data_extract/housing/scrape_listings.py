@@ -5,22 +5,41 @@ import re
 import logging
 from pathlib import Path
 from enum import Enum
+from datetime import datetime
 
 import requests
 import bs4  # type: ignore
 import pandas  # type: ignore
 from main_dec import main
 import json  # Add this import at the top of the file
+from pyspark.sql import SparkSession
+from delta.tables import DeltaTable
+
+def split_address(address: str) -> tuple[str, int]:
+    """Split address into street name and house number."""
+    # Remove any floor information (e.g., '4. th', 'st.')
+    address = re.sub(r'\s+(?:\d+\.?|st\.?|kl\.?)\s*(?:th|tv|mf)?(?=[,\s]|$)', '', address)
+    
+    # Match street name and number
+    match = re.match(r'^(.*?)\s*(\d+)\s*[A-Za-z]?$', address.strip())
+    if match:
+        street, number = match.groups()
+        return street.strip(), int(number)
+    return address.strip(), 0
 
 class PropertyListing(TypedDict):
     """A row of listing data."""
-    address: str
+    address_text: str  # Changed from address
+    house_number: int  # New field
     zip_code: str
     price: float
     rooms: str
     m2: str
     built: str
     m2_price: float
+    property_type_id: int
+    property_type_name: str
+    loaded_at_utc: datetime
 
 class NoListingsError(Exception):
     """Error used when the boliga response contains no listings."""
@@ -82,6 +101,9 @@ def scrape_listings(soup: bs4.BeautifulSoup) -> List[PropertyListing]:
                 address = address_parts[0].strip()
                 city = address_parts[1].strip()
 
+            # Split address into text and number
+            address_text, house_number = split_address(address)
+
             # Get other fields with safe fallbacks
             zip_code = str(listing.get('zipCode', ''))
             price = float(listing.get('price', 0))
@@ -97,7 +119,8 @@ def scrape_listings(soup: bs4.BeautifulSoup) -> List[PropertyListing]:
                 continue
 
             rows.append(PropertyListing({
-                'address': replace_danish_chars(address),
+                'address_text': replace_danish_chars(address_text),
+                'house_number': house_number,
                 'city': replace_danish_chars(city),
                 'zip_code': zip_code,
                 'price': price,
@@ -130,17 +153,44 @@ def make_request(zip_code: str, property_type: PropertyType, page: int = 1) -> b
     response = requests.get(url)
     return bs4.BeautifulSoup(response.text, features="html.parser")
 
-def scrape_all_pages(zip_code: str, property_type: int) -> List[PropertyListing]:
+def ensure_schema_exists():
+    """Create schema if it doesn't exist."""
+    spark = SparkSession.builder.getOrCreate()
+    spark.sql("CREATE CATALOG IF NOT EXISTS mser_delta_lake")
+    spark.sql("CREATE SCHEMA IF NOT EXISTS mser_delta_lake.housing")
+
+def write_to_delta(listings: List[PropertyListing]):
+    """Write listings to Delta table."""
+    if not listings:
+        return
+        
+    spark = SparkSession.builder.getOrCreate()
+    df = spark.createDataFrame(listings)
+        
+    df.write \
+        .format("delta") \
+        .mode("append") \
+        .saveAsTable("mser_delta_lake.housing.listings")
+
+def scrape_all_pages(zip_code: str, property_type: int, loaded_at_utc: datetime) -> List[PropertyListing]:
     """Scrape all pages of listings."""
-    property_type = PropertyType(property_type)  # Convert int to enum
+    property_type_enum = PropertyType(property_type)
     all_listings = []
     page = 1
+    
     while True:
-        soup = make_request(zip_code, property_type, page)
+        soup = make_request(zip_code, property_type_enum, page)
         try:
             new_listings = scrape_listings(soup)
             if not new_listings:
                 break
+                
+            # Add property type and timestamp to each listing
+            for listing in new_listings:
+                listing['property_type_id'] = property_type
+                listing['property_type_name'] = PropertyType(property_type).name.lower()
+                listing['loaded_at_utc'] = loaded_at_utc
+                
             all_listings.extend(new_listings)
             page += 1
         except NoListingsError:
@@ -149,10 +199,8 @@ def scrape_all_pages(zip_code: str, property_type: int) -> List[PropertyListing]
     if not all_listings:
         print(f"No listings found for zip code {zip_code}")
     else:
-        filename = format_filename(zip_code)
-        Path('listings').mkdir(exist_ok=True)
-        df = pandas.DataFrame(all_listings)
-        df.to_csv(f'listings/{filename}', index=False)
+        ensure_schema_exists()
+        write_to_delta(all_listings)
     
     return all_listings
 
