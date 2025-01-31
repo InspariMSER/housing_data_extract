@@ -33,7 +33,6 @@ def get_zip_code() -> str:
 def init_spark():
     """Initialize Spark session."""
     return SparkSession.builder \
-        .appName("Housing Data Extract") \
         .getOrCreate()
 
 def main():
