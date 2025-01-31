@@ -20,6 +20,7 @@ class Row(TypedDict):
 
     address: str
     zip_code: str
+    city: str  # Add city field
     price: float
     date: str
     rooms: str
@@ -60,7 +61,7 @@ def scrape_prices(soup: bs4.BeautifulSoup) -> List[Row]:
     for row in table.find_all('tr'):
         columns = row.find_all('td')
 
-        street   = scrape_street(columns)
+        street, city = scrape_street_and_city(columns)
         zip_code = scrape_zip_code(columns)
         price    = scrape_price(columns)
         date     = scrape_date(columns)
@@ -75,6 +76,7 @@ def scrape_prices(soup: bs4.BeautifulSoup) -> List[Row]:
 
         rows.append(Row({
             'address' : street,
+            'city': city,
             'zip_code': zip_code,
             'price'   : float(price),
             'date'    : date,
@@ -158,13 +160,30 @@ def replace_danish_chars(text: str) -> str:
         text = text.replace(danish, ascii_equiv)
     return text
 
-def scrape_street(columns: bs4.element.ResultSet) -> str:
-    """Scrape the street name and no. from a row in the boliga sold table."""
-    m = match_address(columns)
+def scrape_street_and_city(columns: bs4.element.ResultSet) -> tuple[str, str]:
+    """Scrape the street name, no. and city from a row in the boliga sold table."""
+    full_address = columns[0].find(attrs={'data-gtm': 'sales_address'}).text.strip()
+    
+    # First check if there's a comma in the full address
+    if ',' in full_address:
+        address_parts = full_address.split(',')
+        street = address_parts[0].strip()
+        city = address_parts[1].strip()
+        # Remove zip code from city if present
+        city = re.sub(r'\d{4}', '', city).strip()
+        return replace_danish_chars(street), replace_danish_chars(city)
+    
+    # If no comma, use the regular pattern matching
+    m = re.match(address_pattern, full_address)
+    if m is None:
+        raise ValueError(f'Malformed address: {full_address}')
+    
     street = f'{m.group("street")} {m.group("number")}'
     if m.group('floor') is not None:
         street += f' {m.group("floor")}'
-    return replace_danish_chars(street)
+    city = m.group('city')
+    
+    return replace_danish_chars(street), replace_danish_chars(city)
 
 
 def scrape_zip_code(columns: bs4.element.ResultSet) -> str:
@@ -194,7 +213,7 @@ def scrape_sales(zip_code: str, property_type: int) -> List[Row]:
     property_type = PropertyType(property_type)  # Convert int to enum
     soup = make_request(zip_code, property_type)
     rows = []
-    try:
+    try: 
         rows = scrape_prices(soup)
     except NoSoldListError:
         logging.warning(f'No results found for zip code {zip_code}')

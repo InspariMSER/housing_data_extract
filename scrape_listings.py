@@ -41,7 +41,8 @@ class PropertyType(Enum):
 def scrape_listings(soup: bs4.BeautifulSoup) -> List[PropertyListing]:
     """Scrape all current listings from boliga response."""
     script_tag = soup.find('script', {'id': 'boliga-app-state'})
-    if not script_tag:
+    if not script_tag or not script_tag.string:
+        logging.error("No script tag or empty script content found")
         raise NoListingsError()
 
     # Clean up the JSON string
@@ -50,32 +51,56 @@ def scrape_listings(soup: bs4.BeautifulSoup) -> List[PropertyListing]:
 
     try:
         data = json.loads(json_str)
-    except json.JSONDecodeError:
-        logging.error("Failed to parse JSON data")
-        raise NoListingsError()
+        if not data:
+            logging.error("Empty JSON data")
+            raise NoListingsError()
+            
+        search_results = data.get('search-service-perform')
+        if not search_results:
+            logging.error("No 'search-service-perform' found in data")
+            raise NoListingsError()
+            
+        results = search_results.get('results')
+        if not results:
+            logging.info("No results found in search response")
+            return []
 
-    results = data.get('search-service-perform', {}).get('results', [])
+    except json.JSONDecodeError as e:
+        logging.error(f"Failed to parse JSON data: {e}")
+        raise NoListingsError()
 
     rows = []
     for listing in results:
         try:
-            address = listing['street']
-            city = listing['city']
+            # Get values with None fallbacks
+            address = listing.get('street', '')
+            city = listing.get('city', '')
             
+            # Skip listings with missing required data
+            if not address or not city:
+                logging.warning(f'Skipping listing with missing address or city')
+                continue
+
             # Handle addresses with commas
             if ',' in address:
                 address_parts = address.split(',')
                 address = address_parts[0].strip()
                 city = address_parts[1].strip()
 
-            zip_code = str(listing['zipCode'])
-            price = float(listing['price'])
-            rooms = str(listing['rooms'])
-            m2 = str(listing['size'])
-            built_year = str(listing['buildYear'])
-            m2_price = listing['squaremeterPrice']
-            days_on_market = listing['daysForSale']
+            # Get other fields with safe fallbacks
+            zip_code = str(listing.get('zipCode', ''))
+            price = float(listing.get('price', 0))
+            rooms = str(listing.get('rooms', ''))
+            m2 = str(listing.get('size', ''))
+            built_year = str(listing.get('buildYear', ''))
+            m2_price = listing.get('squaremeterPrice', 0)
+            days_on_market = listing.get('daysForSale', 0)
             
+            # Skip listings with missing critical data
+            if not zip_code or price == 0:
+                logging.warning(f'Skipping listing with missing zip code or price')
+                continue
+
             rows.append(PropertyListing({
                 'address': replace_danish_chars(address),
                 'city': replace_danish_chars(city),
@@ -87,7 +112,7 @@ def scrape_listings(soup: bs4.BeautifulSoup) -> List[PropertyListing]:
                 'm2_price': m2_price,
                 'days_on_market': days_on_market
             }))
-        except (KeyError, ValueError) as e:
+        except (KeyError, ValueError, TypeError) as e:
             logging.warning(f'Error parsing listing: {e}')
             continue
             
