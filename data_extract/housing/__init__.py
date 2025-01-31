@@ -6,7 +6,7 @@ from enum import Enum
 import logging
 from scrape_listings import scrape_all_pages as scrape_listings
 from scrape_latest_sales_prices import scrape_sales
-from utils import zipcodes
+from data_extract.housing.utils import zipcodes
 from pyspark.sql import SparkSession
 from datetime import datetime
 
