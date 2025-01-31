@@ -68,7 +68,7 @@ def main():
             print("Scraping recent sales...")
             scrape_sales(zip_code_str, property_type)
 
-            print("Done with zip code: {zip_code_str}")
+            print(f"Done with zip code: {zip_code_str}")
         except Exception as e:
             logging.error(f"Error processing zip code {zip_code_str}: {str(e)}")
             continue
