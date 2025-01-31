@@ -54,7 +54,7 @@ def predict_sales_price(prices: pandas.DataFrame,
         raise ValueError(f'Not enough samples to predict, need at least {min_samples} got {len(prices)}')
     return prices.m2_price.median() * house_area
 
-postnumre_array = [
+zipcodes = [
     1301, 2000, 2100, 2200, 2300, 2400, 2450, 2500, 2600, 2605, 2610, 2625, 2630, 
     2635, 2640, 2650, 2660, 2665, 2670, 2670, 2680, 2690, 2700, 2720, 2730, 2740, 
     2750, 2760, 2765, 2770, 2791, 2800, 2820, 2830, 2840, 2850, 2860, 2880, 2900, 
