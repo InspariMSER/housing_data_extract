@@ -42,7 +42,6 @@ def scrape_listings(soup: bs4.BeautifulSoup) -> List[PropertyListing]:
     """Scrape all current listings from boliga response."""
     script_tag = soup.find('script', {'id': 'boliga-app-state'})
     if not script_tag or not script_tag.string:
-        logging.error("No script tag or empty script content found")
         raise NoListingsError()
 
     # Clean up the JSON string
@@ -52,17 +51,14 @@ def scrape_listings(soup: bs4.BeautifulSoup) -> List[PropertyListing]:
     try:
         data = json.loads(json_str)
         if not data:
-            logging.error("Empty JSON data")
             raise NoListingsError()
             
         search_results = data.get('search-service-perform')
         if not search_results:
-            logging.error("No 'search-service-perform' found in data")
             raise NoListingsError()
             
         results = search_results.get('results')
         if not results:
-            logging.info("No results found in search response")
             return []
 
     except json.JSONDecodeError as e:
@@ -78,7 +74,6 @@ def scrape_listings(soup: bs4.BeautifulSoup) -> List[PropertyListing]:
             
             # Skip listings with missing required data
             if not address or not city:
-                logging.warning(f'Skipping listing with missing address or city')
                 continue
 
             # Handle addresses with commas

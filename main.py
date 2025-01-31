@@ -5,6 +5,7 @@ from enum import Enum
 import logging
 from scrape_listings import scrape_all_pages as scrape_listings
 from scrape_latest_sales_prices import scrape_sales
+from utils import zipcodes
 
 class PropertyType(Enum):
     Hus = 1
@@ -42,14 +43,24 @@ def get_property_type() -> int:
             print("Please enter a valid number.")
 
 def main():
-    zip_code = get_zip_code()
     property_type = get_property_type()
-
-    print("\nScraping current listings...")
-    scrape_listings(zip_code, property_type)
     
-    print("\nScraping recent sales...")
-    scrape_sales(zip_code, property_type)
+    for zip_code in zipcodes:
+        zip_code_str = str(zip_code)
+        print(f"\nProcessing zip code: {zip_code_str}")
+        
+        try:
+            print("Scraping current listings...")
+            scrape_listings(zip_code_str, property_type)
+            
+            print("Scraping recent sales...")
+            scrape_sales(zip_code_str, property_type)
+
+            print("Done with zip code: {zip_code_str}")
+        except Exception as e:
+            logging.error(f"Error processing zip code {zip_code_str}: {str(e)}")
+            continue
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     main()
