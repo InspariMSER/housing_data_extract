@@ -145,13 +145,10 @@ def write_to_delta(listings: List[PropertyListing]):
         
     spark = SparkSession.builder.getOrCreate()
     df = spark.createDataFrame(listings)
-    
-    # Drop and recreate table
-    spark.sql("DROP TABLE IF EXISTS mser_delta_lake.housing.listings")
-    
+        
     df.write \
         .format("delta") \
-        .mode("overwrite") \
+        .mode("append") \
         .saveAsTable("mser_delta_lake.housing.listings")
 
 def scrape_all_pages(zip_code: str, property_type: int) -> List[PropertyListing]:

@@ -52,6 +52,9 @@ def init_spark():
 def main():
     spark = init_spark()
     property_type = get_property_type()
+
+    # Drop and recreate table
+    spark.sql("DROP TABLE IF EXISTS mser_delta_lake.housing.listings")
     
     for zip_code in zipcodes:
         zip_code_str = str(zip_code)
