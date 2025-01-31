@@ -1,4 +1,4 @@
-from housing import housing_main
+from .housing import housing_main
 
 def data_extract_main():
     """Main entry point for the housing data extraction application."""
