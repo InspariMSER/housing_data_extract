@@ -1,4 +1,5 @@
 """Main script to run both listing and sales price scrapers."""
+%pip install pandas requests beautifulsoup4 main_dec
 
 import re
 from enum import Enum
