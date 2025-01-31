@@ -48,7 +48,10 @@ class PropertyType(Enum):
     Andet = 10
 
 
-address_pattern = (r'(?P<street>[\D ]+)(?P<number>\d+[A-Z]?),?( (?P<floor>(kl\.?|st\.?|(\d+).?)( th| tv| mf| \d+)?))? (?P<zip>\d{4}) (?P<city>[\D ]+)')
+# Update the address pattern to be more flexible
+address_pattern = (r'(?P<street>[^0-9]+)(?P<number>\d+[A-Za-z]?)?'
+                  r'(?:[,.]?\s*(?P<floor>(?:kl|st|[0-9]+)?\.?\s*(?:th|tv|mf|[0-9]+)?))?\s*'
+                  r'(?P<zip>\d{4})\s*(?P<city>.+)')
 
 
 def scrape_prices(soup: bs4.BeautifulSoup) -> List[Row]:
@@ -160,28 +163,47 @@ def replace_danish_chars(text: str) -> str:
         text = text.replace(danish, ascii_equiv)
     return text
 
+def clean_address(address: str) -> str:
+    """Clean and standardize address string before parsing."""
+    # Remove multiple spaces
+    address = ' '.join(address.split())
+    # Remove periods after floor indicators
+    address = re.sub(r'(st|th|tv|mf)\.', r'\1', address)
+    return address
+
 def scrape_street_and_city(columns: bs4.element.ResultSet) -> tuple[str, str]:
     """Scrape the street name, no. and city from a row in the boliga sold table."""
     full_address = columns[0].find(attrs={'data-gtm': 'sales_address'}).text.strip()
+    full_address = clean_address(full_address)
     
     # First check if there's a comma in the full address
     if ',' in full_address:
         address_parts = full_address.split(',')
         street = address_parts[0].strip()
-        city = address_parts[1].strip()
-        # Remove zip code from city if present
-        city = re.sub(r'\d{4}', '', city).strip()
+        remaining = address_parts[1].strip()
+        # Extract zip and city from remaining part
+        zip_city_match = re.search(r'(\d{4})\s*(.+)', remaining)
+        city = zip_city_match.group(2) if zip_city_match else remaining
         return replace_danish_chars(street), replace_danish_chars(city)
     
     # If no comma, use the regular pattern matching
     m = re.match(address_pattern, full_address)
     if m is None:
+        # If pattern fails, try a simpler fallback pattern
+        simple_pattern = r'^(.+?)\s+(\d{4})\s+(.+)$'
+        simple_match = re.match(simple_pattern, full_address)
+        if simple_match:
+            street = simple_match.group(1)
+            city = simple_match.group(3)
+            return replace_danish_chars(street), replace_danish_chars(city)
         raise ValueError(f'Malformed address: {full_address}')
     
-    street = f'{m.group("street")} {m.group("number")}'
-    if m.group('floor') is not None:
+    street = m.group("street").strip()
+    if m.group("number"):
+        street += f' {m.group("number")}'
+    if m.group('floor'):
         street += f' {m.group("floor")}'
-    city = m.group('city')
+    city = m.group('city').strip()
     
     return replace_danish_chars(street), replace_danish_chars(city)
 
