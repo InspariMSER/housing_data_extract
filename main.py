@@ -1,4 +1,4 @@
-"""Main script to run both listing and sales price scrapers."""
+%restart_python
 %pip install pandas requests beautifulsoup4 main_dec
 
 import re
@@ -33,6 +33,7 @@ def get_zip_code() -> str:
 def init_spark():
     """Initialize Spark session."""
     return SparkSession.builder \
+        .appName("Housing Data Extract") \
         .getOrCreate()
 
 def main():
@@ -58,6 +59,8 @@ def main():
         except Exception as e:
             logging.error(f"Error processing zip code {zip_code_str}: {str(e)}")
             continue
+
+    print(f"Done.")
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
