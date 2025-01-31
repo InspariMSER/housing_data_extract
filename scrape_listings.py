@@ -11,6 +11,8 @@ import bs4  # type: ignore
 import pandas  # type: ignore
 from main_dec import main
 import json  # Add this import at the top of the file
+from pyspark.sql import SparkSession
+from delta.tables import DeltaTable
 
 class PropertyListing(TypedDict):
     """A row of listing data."""
@@ -130,6 +132,28 @@ def make_request(zip_code: str, property_type: PropertyType, page: int = 1) -> b
     response = requests.get(url)
     return bs4.BeautifulSoup(response.text, features="html.parser")
 
+def ensure_schema_exists():
+    """Create schema if it doesn't exist."""
+    spark = SparkSession.builder.getOrCreate()
+    spark.sql("CREATE CATALOG IF NOT EXISTS mser_delta_lake")
+    spark.sql("CREATE SCHEMA IF NOT EXISTS mser_delta_lake.housing")
+
+def write_to_delta(listings: List[PropertyListing]):
+    """Write listings to Delta table."""
+    if not listings:
+        return
+        
+    spark = SparkSession.builder.getOrCreate()
+    df = spark.createDataFrame(listings)
+    
+    # Drop and recreate table
+    spark.sql("DROP TABLE IF EXISTS mser_delta_lake.housing.listings")
+    
+    df.write \
+        .format("delta") \
+        .mode("overwrite") \
+        .saveAsTable("mser_delta_lake.housing.listings")
+
 def scrape_all_pages(zip_code: str, property_type: int) -> List[PropertyListing]:
     """Scrape all pages of listings."""
     property_type = PropertyType(property_type)  # Convert int to enum
@@ -149,10 +173,8 @@ def scrape_all_pages(zip_code: str, property_type: int) -> List[PropertyListing]
     if not all_listings:
         print(f"No listings found for zip code {zip_code}")
     else:
-        filename = format_filename(zip_code)
-        Path('listings').mkdir(exist_ok=True)
-        df = pandas.DataFrame(all_listings)
-        df.to_csv(f'listings/{filename}', index=False)
+        ensure_schema_exists()
+        write_to_delta(all_listings)
     
     return all_listings
 

@@ -13,6 +13,8 @@ import requests
 import bs4  # type: ignore
 import pandas  # type: ignore
 from main_dec import main
+from pyspark.sql import SparkSession
+from delta.tables import DeltaTable
 
 
 class Row(TypedDict):
@@ -225,14 +227,30 @@ def make_request(zip_code: str, property_type: PropertyType) -> bs4.BeautifulSou
     return bs4.BeautifulSoup(response.text, features="html.parser")
 
 
-def format_filename(zip_code: str) -> str:
-    """Format the output csv file name using zip code."""
-    return f'sales_prices_{zip_code}.csv'
+def ensure_schema_exists():
+    """Create schema if it doesn't exist."""
+    spark = SparkSession.builder.getOrCreate()
+    spark.sql("CREATE CATALOG IF NOT EXISTS mser_delta_lake")
+    spark.sql("CREATE SCHEMA IF NOT EXISTS mser_delta_lake.housing")
 
+def write_to_delta(sales: List[Row]):
+    """Write sales data to Delta table."""
+    if not sales:
+        return
+        
+    spark = SparkSession.builder.getOrCreate()
+    df = spark.createDataFrame(sales)
+    
+    # Append to existing table or create new one
+    df.write \
+        .format("delta") \
+        .mode("append") \
+        .option("mergeSchema", "true") \
+        .saveAsTable("mser_delta_lake.housing.sales_prices")
 
 def scrape_sales(zip_code: str, property_type: int) -> List[Row]:
     """Scrape sales data for given zip code and property type."""
-    property_type = PropertyType(property_type)  # Convert int to enum
+    property_type = PropertyType(property_type)
     soup = make_request(zip_code, property_type)
     rows = []
     try: 
@@ -240,7 +258,8 @@ def scrape_sales(zip_code: str, property_type: int) -> List[Row]:
     except NoSoldListError:
         logging.warning(f'No results found for zip code {zip_code}')
     
-    filename = format_filename(zip_code)
-    Path('data').mkdir(exist_ok=True)
-    pandas.DataFrame(rows).to_csv('data/'+filename, index=False)
+    if rows:
+        ensure_schema_exists()
+        write_to_delta(rows)
+    
     return rows

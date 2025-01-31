@@ -6,6 +6,7 @@ import logging
 from scrape_listings import scrape_all_pages as scrape_listings
 from scrape_latest_sales_prices import scrape_sales
 from utils import zipcodes
+from pyspark.sql import SparkSession
 
 class PropertyType(Enum):
     Hus = 1
@@ -42,7 +43,14 @@ def get_property_type() -> int:
         except ValueError:
             print("Please enter a valid number.")
 
+def init_spark():
+    """Initialize Spark session."""
+    return SparkSession.builder \
+        .appName("Housing Data Extract") \
+        .getOrCreate()
+
 def main():
+    spark = init_spark()
     property_type = get_property_type()
     
     for zip_code in zipcodes:
