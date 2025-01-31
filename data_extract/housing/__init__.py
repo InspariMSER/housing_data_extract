@@ -36,7 +36,7 @@ def init_spark():
         .appName("Housing Data Extract") \
         .getOrCreate()
 
-def main():
+def housing_main():
     spark = init_spark()
     property_type = 1  # Fixed to "Hus"
     loaded_at_utc = datetime.utcnow()
@@ -64,4 +64,4 @@ def main():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    main()
+    housing_main()
