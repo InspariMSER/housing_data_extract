@@ -1,3 +1,9 @@
+# Databricks notebook source
+# MAGIC %pip install beautifulsoup4 pandas requests main_dec
+# MAGIC %restart_python
+
+# COMMAND ----------
+
 """Script for scraping sales prices from boliga.dk."""
 
 from typing import List, TypedDict, Match
@@ -9,6 +15,7 @@ from pathlib import Path
 from enum import Enum
 import math
 from datetime import datetime
+from Hus.utils import zipcodes, property_type
 
 import requests
 import bs4  # type: ignore
@@ -31,7 +38,7 @@ def split_address(address: str) -> tuple[str, int]:
     return address.strip(), 0
 
 
-class Row(TypedDict):
+class PropertyListing(TypedDict):
     """A row of sales price data."""
     address_text: str  # Changed from address
     house_number: int  # New field
@@ -70,7 +77,7 @@ class PropertyType(Enum):
 # Update the address pattern to be more flexible
 address_pattern = (r'(?P<street>[^0-9]+)(?P<number>\d+[A-Za-z]?)?'
                   r'(?:[,.]?\s*(?P<floor>(?:kl|st|[0-9]+)?\.?\s*(?:th|tv|mf|[0-9]+)?))?\s*'
-                  r'(?P<zip>\d{4})\s*(?P<city>.+)')
+                  r'(?P<zip>\d)\s*(?P<city>.+)')
 
 
 def scrape_prices(soup: bs4.BeautifulSoup) -> List[Row]:
@@ -85,6 +92,7 @@ def scrape_prices(soup: bs4.BeautifulSoup) -> List[Row]:
 
         street, city, house_number = scrape_street_and_city(columns)
         zip_code = scrape_zip_code(columns)
+        estateID = 
         price    = scrape_price(columns)
         date     = scrape_date(columns)
         rooms    = scrape_rooms(columns)
@@ -196,13 +204,13 @@ def scrape_street_and_city(columns: bs4.element.ResultSet) -> tuple[str, str, in
     full_address = columns[0].find(attrs={'data-gtm': 'sales_address'}).text.strip()
     full_address = clean_address(full_address)
     
-    if ',' in full_address:
+    if (',' in full_address):
         address_parts = full_address.split(',')
         address = address_parts[0].strip()
         remaining = address_parts[1].strip()
         address_text, house_number = split_address(address)
         # Extract zip and city from remaining part
-        zip_city_match = re.search(r'(\d{4})\s*(.+)', remaining)
+        zip_city_match = re.search(r'(\d)\s*(.+)', remaining)
         city = zip_city_match.group(2) if zip_city_match else remaining
         return address_text, replace_danish_chars(city), house_number
     
@@ -210,7 +218,7 @@ def scrape_street_and_city(columns: bs4.element.ResultSet) -> tuple[str, str, in
     m = re.match(address_pattern, full_address)
     if m is None:
         # If pattern fails, try a simpler fallback pattern
-        simple_pattern = r'^(.+?)\s+(\d{4})\s+(.+)$'
+        simple_pattern = r'^(.+?)\s+(\d)\s+(.+)$'
         simple_match = re.match(simple_pattern, full_address)
         if simple_match:
             street = simple_match.group(1)
@@ -237,54 +245,78 @@ def scrape_zip_code(columns: bs4.element.ResultSet) -> str:
     return zip_code
 
 
-def make_request(zip_code: str, property_type: PropertyType) -> bs4.BeautifulSoup:
-    """Make request to boliga.dk."""
-    url = (f'https://www.boliga.dk/salg/'
-           f'resultater?searchTab=1&propertyType={property_type.value}&zipcodeFrom={zip_code}&'
-           f'zipcodeTo={zip_code}&sort=date-d&page=1')
-    logging.info(f'Request url: {url}')
-    response = requests.get(url)
-    return bs4.BeautifulSoup(response.text, features="html.parser")
+def make_request(zip_code: str, property_type: PropertyType) -> List[bs4.BeautifulSoup]:
+    """Make requests to boliga.dk for all pages."""
+    soups = []
+    page = 1
+    while True:
+        url = (f'https://www.boliga.dk/salg/'
+               f'resultater?searchTab=1&propertyType={property_type.value}&zipcodeFrom={zip_code}&'
+               f'zipcodeTo={zip_code}&sort=date-d&page={page}')
+        logging.info(f'Request url: {url}')
+        response = requests.get(url)
+        soup = bs4.BeautifulSoup(response.text, features="html.parser")
+        if not soup.find_all('app-sold-list-table'):
+            break
+        soups.append(soup)
+        page += 1
+    return soups
 
 
 def ensure_schema_exists():
     """Create schema if it doesn't exist."""
     spark = SparkSession.builder.getOrCreate()
-    spark.sql("CREATE CATALOG IF NOT EXISTS mser_delta_lake")
-    spark.sql("CREATE SCHEMA IF NOT EXISTS mser_delta_lake.housing")
+    spark.sql("CREATE CATALOG IF NOT EXISTS mser_catalog")
+    spark.sql("CREATE SCHEMA IF NOT EXISTS mser_catalog.housing")
 
-def write_to_delta(sales: List[Row]):
-    """Write sales data to Delta table."""
-    if not sales:
+def write_to_delta(listings: List[PropertyListing]):
+    """Write listings to Delta table."""
+    if not listings:
         return
         
     spark = SparkSession.builder.getOrCreate()
-    df = spark.createDataFrame(sales)
+    table_name = "mser_catalog.housing.sales_prices"
     
-    # Append to existing table or create new one
+    # Drop the table if it exists
+    spark.sql(f"DROP TABLE IF EXISTS {table_name}")
+    
+    df = spark.createDataFrame(listings)
+        
     df.write \
         .format("delta") \
-        .mode("append") \
+        .mode("overwrite") \
         .option("mergeSchema", "true") \
-        .saveAsTable("mser_delta_lake.housing.sales_prices")
+        .saveAsTable(table_name)
 
 def scrape_sales(zip_code: str, property_type: int, loaded_at_utc: datetime) -> List[Row]:
     """Scrape sales data for given zip code and property type."""
     property_type_enum = PropertyType(property_type)
-    soup = make_request(zip_code, property_type_enum)
+    soups = make_request(zip_code, property_type_enum)
     rows = []
-    try: 
-        rows = scrape_prices(soup)
+    for soup in soups:
+        try: 
+            rows.extend(scrape_prices(soup))
+        except NoSoldListError:
+            logging.warning(f'No results found for zip code {zip_code}')
+    
+    if rows:
         # Add property type and timestamp to each row
         for row in rows:
             row['property_type_id'] = property_type
             row['property_type_name'] = PropertyType(property_type).name.lower()
             row['loaded_at_utc'] = loaded_at_utc
-    except NoSoldListError:
-        logging.warning(f'No results found for zip code {zip_code}')
-    
-    if rows:
         ensure_schema_exists()
         write_to_delta(rows)
     
     return rows
+
+# COMMAND ----------
+
+loaded_at_utc = datetime.utcnow()
+
+for zip_code in zipcodes:
+    sales = scrape_sales(zip_code, property_type, loaded_at_utc)
+    if sales:
+        print(f"Scraped {len(sales)} listings for zip code {zip_code}.")
+    else:
+        print(f"No listings found for zip code {zip_code}.")
