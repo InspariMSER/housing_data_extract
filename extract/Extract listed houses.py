@@ -182,7 +182,7 @@ def write_to_delta(listings: List[PropertyListing]):
         
     df.write \
         .format("delta") \
-        .mode("overwrite") \
+        .mode("append") \
         .option("mergeSchema", "true") \
         .saveAsTable(table_name)
 
@@ -226,6 +226,8 @@ def format_filename(zip_code: str) -> str:
 """Main function to run the script."""
 logging.basicConfig(level=logging.INFO)
 loaded_at_utc = datetime.utcnow()
+
+spark.sql("TRUNCATE TABLE mser_catalog.housing.listings")
 
 for zip_code in zipcodes_dict.keys():
     listings = scrape_all_pages(str(zip_code), property_type, loaded_at_utc)
