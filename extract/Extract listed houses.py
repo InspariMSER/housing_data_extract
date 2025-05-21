@@ -161,7 +161,6 @@ def replace_danish_chars(text: str) -> str:
 def make_request(zip_code: str, property_type: PropertyType, page: int = 1) -> bs4.BeautifulSoup:
     """Make request to boliga.dk listings."""
     url = f'https://www.boliga.dk/resultat?zipCodes={zip_code}&propertyType={property_type.value}&page={page}'
-    logging.info(f'Request url: {url}')
     response = requests.get(url)
     return bs4.BeautifulSoup(response.text, features="html.parser")
 
@@ -183,7 +182,7 @@ def write_to_delta(listings: List[PropertyListing]):
         
     df.write \
         .format("delta") \
-        .mode("append") \
+        .mode("overwrite") \
         .option("mergeSchema", "true") \
         .saveAsTable(table_name)
 
