@@ -8,36 +8,56 @@ import pyspark.sql.functions as F
 # Create zip_code dictionary
 
 zipcodes_dict = {
-    8000: "Aarhus C",
-    8200: "Aarhus N",
-    8210: "Aarhus V",
+    8000: "Århus C",
+    8200: "Århus N",
+    8210: "Århus V",
     8220: "Brabrand",
     8230: "Åbyhøj",
     8240: "Risskov",
+    8250: "Egå",
     8260: "Viby J",
     8270: "Højbjerg",
+    8300: "Odder",
+    8310: "Tranbjerg J",
+    8320: "Mårslet",
+    8330: "Beder",
+    8340: "Malling",
+    8350: "Hundslund",
+    8355: "Solbjerg",
+    8361: "Hasselager",
+    8362: "Hørning",
     8370: "Hadsten",
+    8380: "Trige",
+    8381: "Tilst",
     8382: "Hinnerup",
+    8400: "Ebeltoft",
+    8410: "Rønde",
+    8420: "Knebel",
+    8444: "Balle",
+    8450: "Hammel",
+    8462: "Harlev J",
+    8464: "Galten",
+    8471: "Sabro",
     8520: "Lystrup",
     8530: "Hjortshøj",
     8541: "Skødstrup",
     8543: "Hornslet",
-    8870: "Langå"
+    8550: "Ryomgård",
+    8600: "Silkeborg",
+    8660: "Skanderborg",
+    8680: "Ry",
+    8850: "Bjerringbro",
+    8870: "Langå",
+    8900: "Randers"
 }
-
-# COMMAND ----------
-
-# Create widgets
-dbutils.widgets.text("max_score", "10")
-dbutils.widgets.text("max_budget", "4000000")
-max_budget = int(dbutils.widgets.get("max_budget"))
 
 # COMMAND ----------
 
 # Select table, and select only the columns we want
 df = spark.table("mser_catalog.housing.listings")
 df = df.withColumn("full_address", F.concat_ws(" ", F.col("address_text"), F.col("house_number"), F.col("city")))
-df = df.filter(F.col("price") <= max_budget)
+
+# COMMAND ----------
 
 # Convert the dictionary to a DataFrame
 zipcodes_df = spark.createDataFrame(
@@ -45,12 +65,15 @@ zipcodes_df = spark.createDataFrame(
     ["zip_code_filter", "zip_code_city_filter"]
 )
 
-# Filter rows based on the zip_code and city match using a join
-df = df.join(
-    zipcodes_df,
-    (df["zip_code"].cast("string") == zipcodes_df["zip_code_filter"]) &
-    (df["city"] == zipcodes_df["zip_code_city_filter"]),
-    "inner"
+# Create a new column to indicate if the zip_code and city match
+df = df.join(zipcodes_df, df["zip_code"] == zipcodes_df["zip_code_filter"], "left")
+df = df.withColumn(
+    "is_in_zip_code_city",
+    F.when(
+        (df["city"] == df["zip_code_city_filter"]) &
+        (df["zip_code"].cast("string") == df["zip_code_filter"]),
+        True
+    ).otherwise(False)
 )
 
 # COMMAND ----------
@@ -66,11 +89,14 @@ df = df.select(
     "rooms",
     "built",
     "zip_code",
-    "days_on_market"
+    "days_on_market",
+    "is_in_zip_code_city"
 )
 df = df.withColumn("built", F.col("built").cast("integer"))
 df = df.withColumn("rooms", F.col("rooms").cast("integer"))
 df = df.withColumn("m2", F.col("m2").cast("integer"))
+
+# COMMAND ----------
 
 # Construct windows, that sorts different columns, by priority
 built_window                = Window.orderBy(F.asc("built"))
@@ -79,17 +105,19 @@ m2_window                   = Window.orderBy(F.asc("m2"))
 price_window                = Window.orderBy(F.desc("price"))
 rooms_window                = Window.orderBy(F.asc("rooms"))
 
+# COMMAND ----------
+
 # The following variables are helping with calculating the score
 # The calculation is supposed to be "The amount of distinct values in the column divided by the maxiumum score"
 # This is then timed by the dense_rank
 # Example:
 # You have houses from 24 different built years. 
 # The maximum score is 10.
-# This means that the "multiplier" for points is 0,416
-# A house built in 2025 (i.e. the one with higest rank) will score 10 points, while the next best will score 10 - 0,416 (9,58 points)
+# This means that the "multiplier" for points is 0,416 (10 divided by 24)
+# A house built in 2025 (i.e. the one with highest rank) will score 10 points, while the next best will score 10 - 0,416 (9,58 points)
 
 # Set max scoring
-max_score = int(dbutils.widgets.get("max_score"))
+max_score = 10
 
 # Create distinct count variables
 distinct_built              = df.select(F.countDistinct("built")).collect()[0][0]
@@ -97,6 +125,8 @@ distinct_days_on_market     = df.select(F.countDistinct("days_on_market")).colle
 distinct_m2                 = df.select(F.countDistinct("m2")).collect()[0][0]
 distinct_price              = df.select(F.countDistinct("price")).collect()[0][0]
 distinct_rooms              = df.select(F.countDistinct("rooms")).collect()[0][0]
+
+# COMMAND ----------
 
 # Calculate the multiplier for each column
 built_multiplier            = max_score / distinct_built
@@ -116,7 +146,7 @@ df = df.withColumn("rooms_multiplied", F.round(F.dense_rank().over(rooms_window)
 
 # COMMAND ----------
 
-# Total the multipliers
+# Sum the multipliers
 df = df.withColumn("total_score", F.round(F.col("built_multiplied") + F.col("days_on_market_multiplied") + F.col("m2_multiplied") + F.col("price_multiplied") + F.col("rooms_multiplied"), 2))
 
 # Drop table if exists

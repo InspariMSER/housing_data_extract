@@ -222,7 +222,6 @@ def format_filename(zip_code: str) -> str:
     """Format the output csv file name."""
     return f'listings_{zip_code}.csv'
 
-
 # COMMAND ----------
 
 """Main function to run the script."""
@@ -233,6 +232,7 @@ for zip_code in zipcodes_dict.keys():
     listings = scrape_all_pages(str(zip_code), property_type, loaded_at_utc)
     if listings:
         print(f"Scraped {len(listings)} listings for zip code {zip_code}.")
+        write_to_delta(listings)
     else:
         print(f"No listings found for zip code {zip_code}.")
 
