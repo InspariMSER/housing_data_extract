@@ -90,11 +90,23 @@ df = df.select(
     "built",
     "zip_code",
     "days_on_market",
-    "is_in_zip_code_city"
+    "is_in_zip_code_city",
+    # New fields
+    "latitude",
+    "longitude", 
+    "energy_class",
+    "lot_size",
+    "price_change_percent",
+    "is_foreclosure",
+    "basement_size",
+    "open_house",
+    "image_urls"
 )
 df = df.withColumn("built", F.col("built").cast("integer"))
 df = df.withColumn("rooms", F.col("rooms").cast("integer"))
 df = df.withColumn("m2", F.col("m2").cast("integer"))
+df = df.withColumn("lot_size", F.col("lot_size").cast("integer"))
+df = df.withColumn("basement_size", F.col("basement_size").cast("integer"))
 
 # COMMAND ----------
 

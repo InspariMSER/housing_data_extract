@@ -6,18 +6,15 @@
 
 """Script for scraping current property listings from boliga.dk."""
 
-from typing import List, TypedDict, Match
-import re
+from typing import List, TypedDict
 import logging
-from pathlib import Path
 from enum import Enum
 from datetime import datetime
 from extract.utils import zipcodes_dict, property_type
 
 import requests
 import bs4  # type: ignore
-import pandas  # type: ignore
-import json  # Add this import at the top of the file
+import json
 from pyspark.sql import SparkSession
 from delta.tables import DeltaTable
 
@@ -41,15 +38,27 @@ class PropertyListing(TypedDict):
     ouId: int
     address_text: str  # Changed from address
     house_number: int  # New field
+    city: str
     zip_code: str
     price: float
-    rooms: str
-    m2: str
-    built: str
+    rooms: float
+    m2: float
+    built: float
     m2_price: float
+    days_on_market: int
     property_type_id: int
     property_type_name: str
     loaded_at_utc: datetime
+    # New fields from response-example
+    latitude: float
+    longitude: float
+    energy_class: str
+    lot_size: float
+    price_change_percent: float
+    is_foreclosure: bool
+    basement_size: float
+    open_house: str
+    image_urls: list
 
 class NoListingsError(Exception):
     """Error used when the boliga response contains no listings."""
@@ -124,9 +133,28 @@ def scrape_listings(soup: bs4.BeautifulSoup) -> List[PropertyListing]:
             m2_price = listing.get('squaremeterPrice', 0)
             days_on_market = listing.get('daysForSale', 0)
             
+            # New fields from response-example
+            latitude = float(listing.get('latitude', 0.0))
+            longitude = float(listing.get('longitude', 0.0))
+            energy_class = listing.get('energyClass', '')
+            lot_size = float(listing.get('lotSize', 0))
+            price_change_percent = float(listing.get('priceChangePercentTotal', 0))
+            is_foreclosure = bool(listing.get('isForeclosure', False))
+            basement_size = float(listing.get('basementSize', 0))
+            open_house = listing.get('openHouse', '')
+            
+            # Extract image URLs
+            images = listing.get('images', [])
+            image_urls = [img.get('url', '') for img in images if isinstance(img, dict) and img.get('url')]
+            
             # Skip listings with missing critical data
             if not zip_code or price == 0:
-                logging.warning(f'Skipping listing with missing zip code or price')
+                logging.warning('Skipping listing with missing zip code or price')
+                continue
+            
+            # Skip foreclosures if desired (optional filter)
+            if is_foreclosure:
+                logging.info(f'Skipping foreclosure property: {address_text} {house_number}')
                 continue
 
             rows.append(PropertyListing({
@@ -140,7 +168,16 @@ def scrape_listings(soup: bs4.BeautifulSoup) -> List[PropertyListing]:
                 'm2': m2,
                 'built': built_year,
                 'm2_price': m2_price,
-                'days_on_market': days_on_market
+                'days_on_market': days_on_market,
+                'latitude': latitude,
+                'longitude': longitude,
+                'energy_class': energy_class,
+                'lot_size': lot_size,
+                'price_change_percent': price_change_percent,
+                'is_foreclosure': is_foreclosure,
+                'basement_size': basement_size,
+                'open_house': open_house,
+                'image_urls': image_urls
             }))
         except (KeyError, ValueError, TypeError) as e:
             logging.warning(f'Error parsing listing: {e}')
@@ -227,6 +264,8 @@ def format_filename(zip_code: str) -> str:
 logging.basicConfig(level=logging.INFO)
 loaded_at_utc = datetime.utcnow()
 
+# Initialize Spark session
+spark = SparkSession.builder.getOrCreate()
 spark.sql("TRUNCATE TABLE mser_catalog.housing.listings")
 
 for zip_code in zipcodes_dict.keys():
@@ -237,4 +276,4 @@ for zip_code in zipcodes_dict.keys():
     else:
         print(f"No listings found for zip code {zip_code}.")
 
-print(f"Done scraping all listings")
+print("Done scraping all listings")
