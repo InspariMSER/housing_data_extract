@@ -1,10 +1,71 @@
 # Databricks notebook source
+# MAGIC %md
+# MAGIC # Pip installs
+
+# COMMAND ----------
+
 # MAGIC %pip install beautifulsoup4 pandas requests main_dec
 # MAGIC %restart_python
 
 # COMMAND ----------
 
-"""Script for scraping current property listings from boliga.dk."""
+# MAGIC %md
+# MAGIC # Constants
+
+# COMMAND ----------
+
+zipcodes_dict = {
+    8000: "Århus C",
+    8200: "Århus N",
+    8210: "Århus V",
+    8220: "Brabrand",
+    8230: "Åbyhøj",
+    8240: "Risskov",
+    8250: "Egå",
+    8260: "Viby J",
+    8270: "Højbjerg",
+    8300: "Odder",
+    8310: "Tranbjerg J",
+    8320: "Mårslet",
+    8330: "Beder",
+    8340: "Malling",
+    8350: "Hundslund",
+    8355: "Solbjerg",
+    8361: "Hasselager",
+    8362: "Hørning",
+    8370: "Hadsten",
+    8380: "Trige",
+    8381: "Tilst",
+    8382: "Hinnerup",
+    8400: "Ebeltoft",
+    8410: "Rønde",
+    8420: "Knebel",
+    8444: "Balle",
+    8450: "Hammel",
+    8462: "Harlev J",
+    8464: "Galten",
+    8471: "Sabro",
+    8520: "Lystrup",
+    8530: "Hjortshøj",
+    8541: "Skødstrup",
+    8543: "Hornslet",
+    8550: "Ryomgård",
+    8600: "Silkeborg",
+    8660: "Skanderborg",
+    8680: "Ry",
+    8850: "Bjerringbro",
+    8870: "Langå",
+    8900: "Randers"
+}
+
+property_type = 1
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC # Imports
+
+# COMMAND ----------
 
 from typing import List, TypedDict
 import logging
@@ -17,6 +78,13 @@ import bs4  # type: ignore
 import json
 from pyspark.sql import SparkSession
 from delta.tables import DeltaTable
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC # Functions
+
+# COMMAND ----------
 
 def split_address(address: str) -> tuple[str, int]:
     """Split address into street name and house number."""
@@ -257,6 +325,11 @@ def scrape_all_pages(zip_code: str, property_type: int, loaded_at_utc: datetime)
 def format_filename(zip_code: str) -> str:
     """Format the output csv file name."""
     return f'listings_{zip_code}.csv'
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC # Actions
 
 # COMMAND ----------
 
