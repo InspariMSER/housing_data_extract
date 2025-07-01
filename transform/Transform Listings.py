@@ -1,57 +1,71 @@
 # Databricks notebook source
+"""
+Transform Listings with enhanced scoring algorithm.
+Now includes energy class, train station distance, lot size, and other new factors.
+"""
+
 #Imports
 from pyspark.sql import Window
 import pyspark.sql.functions as F
+from pyspark.sql.types import DoubleType
+from pyspark.sql import SparkSession
+import math
+
+# Import constants from utils
+from utils import ENERGY_CLASS_SCORES, TRAIN_STATIONS, MAX_DISTANCE_KM, zipcodes_dict
 
 # COMMAND ----------
 
-# Create zip_code dictionary
+def calculate_distance_udf():
+    """UDF to calculate distance to nearest train station."""
+    def calculate_distance(lat, lon):
+        if not lat or not lon or lat == 0 or lon == 0:
+            return 0.0
+            
+        best_score = 0.0
+        
+        for station in TRAIN_STATIONS:
+            # Haversine formula for great circle distance
+            lat1, lon1, lat2, lon2 = math.radians(lat), math.radians(lon), math.radians(station["lat"]), math.radians(station["lon"])
+            dlat = lat2 - lat1
+            dlon = lon2 - lon1
+            a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+            c = 2 * math.asin(math.sqrt(a))
+            distance_km = c * 6371  # Earth radius in km
+            
+            # Calculate score (10 points at 0km, 0 points at MAX_DISTANCE_KM)
+            if distance_km >= MAX_DISTANCE_KM:
+                score = 0.0
+            else:
+                score = 10.0 * (1 - distance_km / MAX_DISTANCE_KM)
+            
+            # No weighting - all stations equal
+            best_score = max(best_score, score)
+        
+        return round(best_score, 2)
+    
+    return F.udf(calculate_distance, DoubleType())
 
-zipcodes_dict = {
-    8000: "Århus C",
-    8200: "Århus N",
-    8210: "Århus V",
-    8220: "Brabrand",
-    8230: "Åbyhøj",
-    8240: "Risskov",
-    8250: "Egå",
-    8260: "Viby J",
-    8270: "Højbjerg",
-    8300: "Odder",
-    8310: "Tranbjerg J",
-    8320: "Mårslet",
-    8330: "Beder",
-    8340: "Malling",
-    8350: "Hundslund",
-    8355: "Solbjerg",
-    8361: "Hasselager",
-    8362: "Hørning",
-    8370: "Hadsten",
-    8380: "Trige",
-    8381: "Tilst",
-    8382: "Hinnerup",
-    8400: "Ebeltoft",
-    8410: "Rønde",
-    8420: "Knebel",
-    8444: "Balle",
-    8450: "Hammel",
-    8462: "Harlev J",
-    8464: "Galten",
-    8471: "Sabro",
-    8520: "Lystrup",
-    8530: "Hjortshøj",
-    8541: "Skødstrup",
-    8543: "Hornslet",
-    8550: "Ryomgård",
-    8600: "Silkeborg",
-    8660: "Skanderborg",
-    8680: "Ry",
-    8850: "Bjerringbro",
-    8870: "Langå",
-    8900: "Randers"
-}
+def energy_class_score_udf():
+    """UDF to convert energy class to score."""
+    def energy_score(energy_class):
+        if energy_class is None:
+            return ENERGY_CLASS_SCORES[None]
+        return ENERGY_CLASS_SCORES.get(str(energy_class).strip(), ENERGY_CLASS_SCORES[''])
+    
+    return F.udf(energy_score, DoubleType())
 
 # COMMAND ----------
+
+# Register UDFs
+distance_udf = calculate_distance_udf()
+energy_udf = energy_class_score_udf()
+
+# COMMAND ----------
+
+spark = SparkSession.builder \
+    .appName("Transform Listings with Enhanced Scoring") \
+    .getOrCreate()
 
 # Select table, and select only the columns we want
 df = spark.table("mser_catalog.housing.listings")
@@ -100,7 +114,8 @@ df = df.select(
     "is_foreclosure",
     "basement_size",
     "open_house",
-    "image_urls"
+    "image_urls",
+    "ouId"  # Make sure we keep the ID
 )
 df = df.withColumn("built", F.col("built").cast("integer"))
 df = df.withColumn("rooms", F.col("rooms").cast("integer"))
@@ -110,59 +125,140 @@ df = df.withColumn("basement_size", F.col("basement_size").cast("integer"))
 
 # COMMAND ----------
 
-# Construct windows, that sorts different columns, by priority
-built_window                = Window.orderBy(F.asc("built"))
-days_on_market_window       = Window.orderBy(F.desc("days_on_market"))
-m2_window                   = Window.orderBy(F.asc("m2"))
-price_window                = Window.orderBy(F.desc("price"))
-rooms_window                = Window.orderBy(F.asc("rooms"))
+# ENHANCED SCORING ALGORITHM - POSTNUMMER SPECIFIC
+# Now with 8 factors instead of 5, but scored relative to each zip code
+
+# Create windows partitioned by zip_code for relative scoring
+zip_built_window = Window.partitionBy("zip_code").orderBy(F.desc("built"))
+zip_days_window = Window.partitionBy("zip_code").orderBy(F.asc("days_on_market"))
+zip_m2_window = Window.partitionBy("zip_code").orderBy(F.desc("m2"))
+zip_price_per_m2_window = Window.partitionBy("zip_code").orderBy(F.asc("price_per_m2"))
+zip_lot_size_window = Window.partitionBy("zip_code").orderBy(F.desc("lot_size"))
+zip_basement_window = Window.partitionBy("zip_code").orderBy(F.desc("basement_size"))
+
+# Calculate price per m2 first for price efficiency scoring
+df = df.withColumn("price_per_m2", F.col("price") / F.col("m2"))
+
+# 1. Energy Class Score (NEW - High Weight) - Global scoring is fine for this
+df = df.withColumn("energy_score", energy_udf(F.col("energy_class")))
+
+# 2. Train Distance Score (NEW - High Weight) - Global scoring is fine for this
+df = df.withColumn("train_distance_score", distance_udf(F.col("latitude"), F.col("longitude")))
+
+# 3. Built Year Score (Traditional - Medium Weight) - ZIP CODE RELATIVE
+df = df.withColumn("built_rank", F.dense_rank().over(zip_built_window))
+df = df.withColumn("built_max_rank", F.max("built_rank").over(Window.partitionBy("zip_code")))
+df = df.withColumn("built_score", 
+    F.when(F.col("built_max_rank") > 1, 
+           F.round(10.0 * (F.col("built_rank") - 1) / (F.col("built_max_rank") - 1), 2))
+    .otherwise(10.0)  # If all houses in zip have same build year
+)
+
+# 4. Days on Market Score (Traditional - Low Weight) - ZIP CODE RELATIVE
+df = df.withColumn("days_rank", F.dense_rank().over(zip_days_window))
+df = df.withColumn("days_max_rank", F.max("days_rank").over(Window.partitionBy("zip_code")))
+df = df.withColumn("days_market_score",
+    F.when(F.col("days_max_rank") > 1,
+           F.round(10.0 * (F.col("days_rank") - 1) / (F.col("days_max_rank") - 1), 2))
+    .otherwise(10.0)  # If all houses in zip have same days on market
+)
+
+# 5. Size Score (Traditional - Medium Weight) - ZIP CODE RELATIVE
+df = df.withColumn("size_rank", F.dense_rank().over(zip_m2_window))
+df = df.withColumn("size_max_rank", F.max("size_rank").over(Window.partitionBy("zip_code")))
+df = df.withColumn("size_score",
+    F.when(F.col("size_max_rank") > 1,
+           F.round(10.0 * (F.col("size_rank") - 1) / (F.col("size_max_rank") - 1), 2))
+    .otherwise(10.0)  # If all houses in zip have same size
+)
+
+# 6. Price Efficiency Score (Modified Traditional - Medium Weight) - ZIP CODE RELATIVE
+df = df.withColumn("price_rank", F.dense_rank().over(zip_price_per_m2_window))
+df = df.withColumn("price_max_rank", F.max("price_rank").over(Window.partitionBy("zip_code")))
+df = df.withColumn("price_score",
+    F.when(F.col("price_max_rank") > 1,
+           F.round(10.0 * (F.col("price_rank") - 1) / (F.col("price_max_rank") - 1), 2))
+    .otherwise(10.0)  # If all houses in zip have same price per m2
+)
+
+# 7. Lot Size Score (NEW - Medium Weight) - ZIP CODE RELATIVE
+df = df.withColumn("lot_rank", F.dense_rank().over(zip_lot_size_window))
+df = df.withColumn("lot_max_rank", F.max("lot_rank").over(Window.partitionBy("zip_code")))
+df = df.withColumn("lot_size_score",
+    F.when(F.col("lot_max_rank") > 1,
+           F.round(10.0 * (F.col("lot_rank") - 1) / (F.col("lot_max_rank") - 1), 2))
+    .otherwise(10.0)  # If all houses in zip have same lot size
+)
+
+# 8. Basement Size Score (NEW - Low Weight) - ZIP CODE RELATIVE
+df = df.withColumn("basement_rank", F.dense_rank().over(zip_basement_window))
+df = df.withColumn("basement_max_rank", F.max("basement_rank").over(Window.partitionBy("zip_code")))
+df = df.withColumn("basement_score",
+    F.when(F.col("basement_max_rank") > 1,
+           F.round(10.0 * (F.col("basement_rank") - 1) / (F.col("basement_max_rank") - 1), 2))
+    .otherwise(10.0)  # If all houses in zip have same basement size
+)
 
 # COMMAND ----------
 
-# The following variables are helping with calculating the score
-# The calculation is supposed to be "The amount of distinct values in the column divided by the maxiumum score"
-# This is then timed by the dense_rank
-# Example:
-# You have houses from 24 different built years. 
-# The maximum score is 10.
-# This means that the "multiplier" for points is 0,416 (10 divided by 24)
-# A house built in 2025 (i.e. the one with highest rank) will score 10 points, while the next best will score 10 - 0,416 (9,58 points)
+# TOTAL SCORE CALCULATION - NO WEIGHTING
+# Simple sum of all individual scores
 
-# Set max scoring
-max_score = 10
+df = df.withColumn("total_score", F.round(
+    F.col("energy_score") +           # Energy: 10 points max
+    F.col("train_distance_score") +   # Train: 10 points max  
+    F.col("lot_size_score") +         # Lot size: 10 points max
+    F.col("size_score") +             # House size: 10 points max
+    F.col("price_score") +            # Price efficiency: 10 points max
+    F.col("built_score") +            # Build year: 10 points max
+    F.col("basement_score") +         # Basement: 10 points max
+    F.col("days_market_score"),       # Days on market: 10 points max
+    2
+))
 
-# Create distinct count variables
-distinct_built              = df.select(F.countDistinct("built")).collect()[0][0]
-distinct_days_on_market     = df.select(F.countDistinct("days_on_market")).collect()[0][0]
-distinct_m2                 = df.select(F.countDistinct("m2")).collect()[0][0]
-distinct_price              = df.select(F.countDistinct("price")).collect()[0][0]
-distinct_rooms              = df.select(F.countDistinct("rooms")).collect()[0][0]
+# Maximum possible score: 10 + 10 + 10 + 10 + 10 + 10 + 10 + 10 = 80 points
 
 # COMMAND ----------
 
-# Calculate the multiplier for each column
-built_multiplier            = max_score / distinct_built
-days_on_market_multiplier   = max_score / distinct_days_on_market
-m2_multiplier               = max_score / distinct_m2
-price_multiplier            = max_score / distinct_price
-rooms_multiplier            = max_score / distinct_rooms
+# Add individual scores for transparency and debugging
+df = df.select(
+    "*",
+    F.col("energy_score").alias("score_energy"),
+    F.col("train_distance_score").alias("score_train_distance"),
+    F.col("lot_size_score").alias("score_lot_size"),
+    F.col("size_score").alias("score_house_size"),
+    F.col("price_score").alias("score_price_efficiency"),
+    F.col("built_score").alias("score_build_year"),
+    F.col("basement_score").alias("score_basement"),
+    F.col("days_market_score").alias("score_days_market"),
+    F.col("total_score")
+)
 
 # COMMAND ----------
 
-# Here we calculate the score of each column.
-df = df.withColumn("built_multiplied", F.round(F.dense_rank().over(built_window) * built_multiplier, 2))
-df = df.withColumn("days_on_market_multiplied", F.round(F.dense_rank().over(days_on_market_window) * days_on_market_multiplier, 2))
-df = df.withColumn("m2_multiplied", F.round(F.dense_rank().over(m2_window) * m2_multiplier, 2))
-df = df.withColumn("price_multiplied", F.round(F.dense_rank().over(price_window) * price_multiplier, 2))
-df = df.withColumn("rooms_multiplied", F.round(F.dense_rank().over(rooms_window) * rooms_multiplier, 2))
-
-# COMMAND ----------
-
-# Sum the multipliers
-df = df.withColumn("total_score", F.round(F.col("built_multiplied") + F.col("days_on_market_multiplied") + F.col("m2_multiplied") + F.col("price_multiplied") + F.col("rooms_multiplied"), 2))
+# Drop temporary scoring columns to clean up
+df = df.drop("energy_score", "train_distance_score", "lot_size_score", "size_score", 
+             "price_score", "built_score", "basement_score", "days_market_score", 
+             "price_per_m2",
+             # Drop ranking columns
+             "built_rank", "built_max_rank", "days_rank", "days_max_rank",
+             "size_rank", "size_max_rank", "price_rank", "price_max_rank",
+             "lot_rank", "lot_max_rank", "basement_rank", "basement_max_rank")
 
 # Drop table if exists
 spark.sql("DROP TABLE IF EXISTS mser_catalog.housing.listings_scored")
                    
 # Write to table
 df.write.mode("overwrite").saveAsTable("mser_catalog.housing.listings_scored")
+
+print("Enhanced ZIP CODE RELATIVE scoring complete! Updated table: mser_catalog.housing.listings_scored")
+print("Maximum possible score: 80 points")
+print("Scoring factors (relative within each zip code except energy and train distance):")
+print("- Energy class (10 pts max) - GLOBAL")
+print("- Train distance (10 pts max) - GLOBAL")  
+print("- Build year (10 pts max) - RELATIVE")
+print("- House size (10 pts max) - RELATIVE")
+print("- Price efficiency (10 pts max) - RELATIVE")
+print("- Lot size (10 pts max) - RELATIVE")
+print("- Basement size (10 pts max) - RELATIVE")
+print("- Days on market (10 pts max) - RELATIVE")

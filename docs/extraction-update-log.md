@@ -154,4 +154,48 @@ Nu hvor vi har adgang til de nye felter, kan vi implementere:
 
 ## ✅ Status
 **Opgave 1 Fuldført**: Data extraction er opdateret og testet med alle nye felter. 
-**Klar til Opgave 2**: Implementering af forbedret scoring algoritme.
+**Klar til Opgave 2**: Implementering af forbedret scoring algoritme
+
+## 🚀 Status Opdatering - Opgave 2 Completeret
+
+### 📅 Dato: 30. juni 2025 (samme dag)
+
+### ✅ Opgave 2: Forbedret Scoring Algoritme - COMPLETERET
+
+**Hvad er blevet implementeret:**
+
+1. **Integreret forbedret scoring i hovedpipeline**
+   - `transform/Transform Listings.py` er opdateret med den nye algoritme
+   - Fjernet separate `Transform Listings Enhanced.py` fil efter integration
+   - Alle UDF'er og scoring logik er nu i hovedfilen
+
+2. **8-faktor scoring system implementeret**
+   - **Energiklasse scoring** (15 point max) - A=10, B=8, C=6, osv.
+   - **Togafstand scoring** (15 point max) - Haversine formula med station vægter
+   - **Grundstørrelse scoring** (10 point max) - Kategoriseret 0-500-1500m²+
+   - **Husstørrelse scoring** (10 point max) - Kategoriseret m² intervals
+   - **Priseffektivitet scoring** (10 point max) - DKK/m² baseret
+   - **Byggeår scoring** (8 point max) - År-kategorier
+   - **Kælder scoring** (2.5 point max) - Bonus for kælderareal
+   - **Marked timing scoring** (3 point max) - Dage på markedet
+
+3. **Streamlit app forbedret**
+   - Nye filtre for energiklasse, byggeår, grundstørrelse, kælder
+   - Score breakdown visning i separate tab
+   - Opdateret til max score 73.5 (fra 50)
+   - Forbedret UI med scoring information
+
+4. **Dokumentation opdateret**
+   - Ny [`enhanced-scoring-algorithm.md`](enhanced-scoring-algorithm.md) dokumentation
+   - README opdateret til at reflektere completion af opgave 2
+   - Teknisk dokumentation linket korrekt
+
+**Test resultater:**
+- Alle UDF'er håndterer edge cases (manglende GPS, energiklasse)
+- Scoring range valideret (0-73.5 point)
+- Performance acceptabel for batch processing
+
+**Næste opgaver:**
+1. Migrer til DuckDB og pandas-baseret processing
+2. Implementer notifikationssystem
+3. Performance optimering

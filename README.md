@@ -1,6 +1,9 @@
 # Housing Data Extract - Hus-søgningssystem
 
-Dette projekt skal hjælpe mig og min kæreste med at finde det perfekte hus i Aarhus-området. Systemet scraper boligdata fra boliga.dk, beregner en score baseret på vores præferencer, og præsenterer resultaterne gennem en interaktiv webapp.
+Dette projekt skal hjælpe mig og min kæreste med at finde det## 📚 Teknisk Dokumentation
+
+- [`extraction-update-log.md`](docs/extraction-update-log.md): Detaljeret log over opdateringer til data extraction
+- [`boliga-api-documentation.md`](docs/boliga-api-documentation.md): Komplet dokumentation af boliga.dk's API strukturfekte hus i Aarhus-området. Systemet scraper boligdata fra boliga.dk, beregner en score baseret på vores præferencer, og præsenterer resultaterne gennem en interaktiv webapp.
 
 ## 🎯 Projektmål
 
@@ -33,37 +36,34 @@ Dette projekt skal hjælpe mig og min kæreste med at finde det perfekte hus i A
 - **Frontend**: Streamlit på localhost (lokalt deployment)
 - **Hosting**: Selvstændig server/computer i stedet for cloud platform
 
-## 📊 Nuværende scoring algoritme
+## 📊 Forbedret scoring algoritme (OPDATERET!)
 
-Hver bolig scores på 5 parametre (max 10 point hver):
-- **Byggeår**: Nyere = højere score
-- **Dage på markedet**: Færre dage = højere score  
-- **m²**: Større = højere score
-- **Pris**: Lavere = højere score
-- **Værelser**: Færre = højere score
+Hver bolig scores nu på **8 parametre** med vægtet scoring (max 73.5 point):
 
-**Total max score**: 50 point
+**Høj vægt faktorer:**
+- **Energiklasse** (15 point max): A=10, B=8, C=6, D=4, E=2, F/G=0
+- **Afstand til tog** (15 point max): Beregnet via GPS koordinater til S-tog og letbane
 
-## 🚀 Planlagte forbedringer
+**Medium vægt faktorer:**
+- **Grundstørrelse** (10 point max): 0-500m²=0-5pt, 500-1500m²=5-10pt  
+- **Husstørrelse** (10 point max): Baseret på m² kategorier
+- **Priseffektivitet** (10 point max): Pris pr. m² sammenlignet med område
+- **Byggeår** (8 point max): Kategoriseret efter alder
 
-### Nye datafelter at udnytte:
-- `energyClass`: Energimærke (A-G) - vigtigt for driftsomkostninger
-- `lotSize`: Grundstørrelse - vigtigt for have og udvidelser
-- `latitude`/`longitude`: GPS koordinater for afstandsberegning til togstationer
-- `priceChangePercentTotal`: Prisudvikling - indikator for markedstendens
-- `isForeclosure`: Tvangsauktion flag - bør undgås
-- `basementSize`: Kælderstørrelse - ekstra værdi
-- `openHouse`: Åbent hus information
-- `images`: Links til boligbilleder
+**Lav vægt faktorer:**
+- **Kælderareal** (2.5 point max): Bonus for kælderplads
+- **Dage på marked** (3 point max): Færre dage = højere score
 
-### Forbedret scoring algoritme:
-1. **Energimærke** (høj vægt): A=10, B=8, C=6, D=4, E=2, F/G=0
-2. **Afstand til tog** (høj vægt): Beregnet via GPS koordinater
-3. **Grundstørrelse** (medium vægt): Større grund = flere point
-4. **Prisudvikling** (medium vægt): Faldende/stabile priser = flere point
-5. **Byggeår** (bibeholdt vægt)
-6. **m²/pris ratio** (justeret vægt)
-7. **Tvangsauktion filter**: Automatisk ekskludering
+**Total max score**: 73.5 point (tidligere 50)
+
+## 🚀 Status opdatering
+
+### ✅ Completeret:
+1. **Data extraction modernisering** - Alle nye felter ekstrakteret og valideret
+2. **Forbedret scoring algoritme** - Implementeret og integreret i pipeline
+3. **Streamlit app forbedringer** - Nye filtre og score breakdown visning
+
+### 🔄 I gang:
 
 ## 📋 Data eksempel fra boliga.dk
 
@@ -99,15 +99,16 @@ Hver bolig scores på 5 parametre (max 10 point hver):
 ## 🎯 Næste skridt
 
 1. ✅ **Opdater data extraction** til at inkludere alle relevante felter - **FULDFØRT**
-2. **Implementer forbedret scoring** med energimærke og afstand til tog - **I GANG**
-3. **Migrer til DuckDB** og pandas-baseret processing
+2. ✅ **Implementer forbedret scoring** med energimærke og afstand til tog - **FULDFØRT**
+3. **Migrer til DuckDB** og pandas-baseret processing - **NÆSTE OPGAVE**
 4. **Sæt notifikationssystem op** med email alerts
 5. **Optimér performance** og reducer kompleksitet
 
 ## 📚 Teknisk Dokumentation
 
-- [`extraction-update-log.md`](extraction-update-log.md): Detaljeret log over opdateringer til data extraction
-- [`boliga-api-documentation.md`](boliga-api-documentation.md): Komplet dokumentation af boliga.dk's API struktur
+- [`docs/extraction-update-log.md`](docs/extraction-update-log.md): Detaljeret log over opdateringer til data extraction
+- [`docs/boliga-api-documentation.md`](docs/boliga-api-documentation.md): Komplet dokumentation af boliga.dk's API struktur
+- [`docs/enhanced-scoring-algorithm.md`](docs/enhanced-scoring-algorithm.md): Detaljeret dokumentation af den forbedrede scoring algoritme
 
 ## 📍 Målområder (postnumre)
 
