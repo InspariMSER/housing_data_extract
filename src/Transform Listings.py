@@ -28,16 +28,38 @@ property_type = 1
 
 # Energy class scoring mapping
 ENERGY_CLASS_SCORES = {
-    'a': 10.0, 'A': 10.0,
-    'b': 8.0,  'B': 8.0,
-    'c': 6.0,  'C': 6.0,
-    'd': 4.0,  'D': 4.0,
-    'e': 2.0,  'E': 2.0,
-    'f': 0.0,  'F': 0.0,
-    'g': 0.0,  'G': 0.0,
-    '': 3.0,   # Default for missing energy class
-    None: 3.0
+    'A': 10.0,
+    'B': 8.0,
+    'C': 6.0,
+    'D': 4.0,
+    'E': 2.0,
+    'F': 0.0,
+    'UNKNOWN': 3.0  # Default for missing/invalid energy class
 }
+
+def normalize_energy_class(energy_class):
+    """
+    Normalize energy class values to handle boliga.dk's quirky data.
+    - Convert to uppercase
+    - Map G,H,I,J,K,L to A (these are actually A-class in boliga's system)
+    - Map '-', null, empty to 'UNKNOWN'
+    """
+    if energy_class is None or energy_class == '' or energy_class == '-':
+        return 'UNKNOWN'
+    
+    # Convert to uppercase and strip whitespace
+    energy_class = str(energy_class).strip().upper()
+    
+    # Map the weird G,H,I,J,K,L values to A (these are actually A-class)
+    if energy_class in ['G', 'H', 'I', 'J', 'K', 'L']:
+        return 'A'
+    
+    # Valid energy classes
+    if energy_class in ['A', 'B', 'C', 'D', 'E', 'F']:
+        return energy_class
+    
+    # Everything else becomes UNKNOWN
+    return 'UNKNOWN'
 
 # Train stations and light rail stops accessible by bike from target zip codes
 TRAIN_STATIONS = [
@@ -147,9 +169,8 @@ def calculate_distance_udf():
 def energy_class_score_udf():
     """UDF to convert energy class to score."""
     def energy_score(energy_class):
-        if energy_class is None:
-            return ENERGY_CLASS_SCORES[None]
-        return ENERGY_CLASS_SCORES.get(str(energy_class).strip(), ENERGY_CLASS_SCORES[''])
+        normalized_class = normalize_energy_class(energy_class)
+        return ENERGY_CLASS_SCORES.get(normalized_class, ENERGY_CLASS_SCORES['UNKNOWN'])
     
     return F.udf(energy_score, DoubleType())
 
@@ -222,6 +243,10 @@ df = df.withColumn("m2", F.col("m2").cast("integer"))
 df = df.withColumn("lot_size", F.col("lot_size").cast("integer"))
 df = df.withColumn("basement_size", F.col("basement_size").cast("integer"))
 
+# Normalize energy class using UDF
+normalize_energy_udf = F.udf(normalize_energy_class, F.StringType())
+df = df.withColumn("energy_class", normalize_energy_udf(F.col("energy_class")))
+
 # COMMAND ----------
 
 # ENHANCED SCORING ALGORITHM - POSTNUMMER SPECIFIC
@@ -249,7 +274,7 @@ df = df.withColumn("built_rank", F.dense_rank().over(zip_built_window))
 df = df.withColumn("built_max_rank", F.max("built_rank").over(Window.partitionBy("zip_code")))
 df = df.withColumn("built_score", 
     F.when(F.col("built_max_rank") > 1, 
-           F.round(10.0 * (F.col("built_rank") - 1) / (F.col("built_max_rank") - 1), 2))
+           F.round(10.0 * (F.col("built_max_rank") - F.col("built_rank")) / (F.col("built_max_rank") - 1), 2))
     .otherwise(10.0)  # If all houses in zip have same build year
 )
 
@@ -258,7 +283,7 @@ df = df.withColumn("days_rank", F.dense_rank().over(zip_days_window))
 df = df.withColumn("days_max_rank", F.max("days_rank").over(Window.partitionBy("zip_code")))
 df = df.withColumn("days_market_score",
     F.when(F.col("days_max_rank") > 1,
-           F.round(10.0 * (F.col("days_rank") - 1) / (F.col("days_max_rank") - 1), 2))
+           F.round(10.0 * (F.col("days_max_rank") - F.col("days_rank")) / (F.col("days_max_rank") - 1), 2))
     .otherwise(10.0)  # If all houses in zip have same days on market
 )
 
@@ -267,7 +292,7 @@ df = df.withColumn("size_rank", F.dense_rank().over(zip_m2_window))
 df = df.withColumn("size_max_rank", F.max("size_rank").over(Window.partitionBy("zip_code")))
 df = df.withColumn("size_score",
     F.when(F.col("size_max_rank") > 1,
-           F.round(10.0 * (F.col("size_rank") - 1) / (F.col("size_max_rank") - 1), 2))
+           F.round(10.0 * (F.col("size_max_rank") - F.col("size_rank")) / (F.col("size_max_rank") - 1), 2))
     .otherwise(10.0)  # If all houses in zip have same size
 )
 
@@ -276,7 +301,7 @@ df = df.withColumn("price_rank", F.dense_rank().over(zip_price_per_m2_window))
 df = df.withColumn("price_max_rank", F.max("price_rank").over(Window.partitionBy("zip_code")))
 df = df.withColumn("price_score",
     F.when(F.col("price_max_rank") > 1,
-           F.round(10.0 * (F.col("price_rank") - 1) / (F.col("price_max_rank") - 1), 2))
+           F.round(10.0 * (F.col("price_max_rank") - F.col("price_rank")) / (F.col("price_max_rank") - 1), 2))
     .otherwise(10.0)  # If all houses in zip have same price per m2
 )
 
@@ -285,7 +310,7 @@ df = df.withColumn("lot_rank", F.dense_rank().over(zip_lot_size_window))
 df = df.withColumn("lot_max_rank", F.max("lot_rank").over(Window.partitionBy("zip_code")))
 df = df.withColumn("lot_size_score",
     F.when(F.col("lot_max_rank") > 1,
-           F.round(10.0 * (F.col("lot_rank") - 1) / (F.col("lot_max_rank") - 1), 2))
+           F.round(10.0 * (F.col("lot_max_rank") - F.col("lot_rank")) / (F.col("lot_max_rank") - 1), 2))
     .otherwise(10.0)  # If all houses in zip have same lot size
 )
 
@@ -294,7 +319,7 @@ df = df.withColumn("basement_rank", F.dense_rank().over(zip_basement_window))
 df = df.withColumn("basement_max_rank", F.max("basement_rank").over(Window.partitionBy("zip_code")))
 df = df.withColumn("basement_score",
     F.when(F.col("basement_max_rank") > 1,
-           F.round(10.0 * (F.col("basement_rank") - 1) / (F.col("basement_max_rank") - 1), 2))
+           F.round(10.0 * (F.col("basement_max_rank") - F.col("basement_rank")) / (F.col("basement_max_rank") - 1), 2))
     .otherwise(10.0)  # If all houses in zip have same basement size
 )
 

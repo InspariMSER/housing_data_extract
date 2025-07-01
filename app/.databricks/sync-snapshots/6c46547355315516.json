@@ -3,7 +3,7 @@
   "host": "https://adb-2968060556831256.16.azuredatabricks.net",
   "remote_path": "/Workspace/Users/mser@inspari.dk/databricks_apps/mser-housing-app_2025_05_21-07_54/streamlit-data-app",
   "last_modified_times": {
-    "app.py": "2025-06-30T19:27:31.869008343+02:00",
+    "app.py": "2025-07-01T09:48:16.424818469+02:00",
     "app.yaml": "2025-06-30T19:27:32.052341446+02:00",
     "requirements.txt": "2025-06-30T19:27:32.052341446+02:00"
   },

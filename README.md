@@ -38,23 +38,26 @@ Dette projekt skal hjælpe mig og min kæreste med at finde det## 📚 Teknisk D
 
 ## 📊 Forbedret scoring algoritme (OPDATERET!)
 
-Hver bolig scores nu på **8 parametre** med vægtet scoring (max 73.5 point):
+Hver bolig scores nu på **8 parametre** med equal weighting (max 80 point):
 
-**Høj vægt faktorer:**
-- **Energiklasse** (15 point max): A=10, B=8, C=6, D=4, E=2, F/G=0
-- **Afstand til tog** (15 point max): Beregnet via GPS koordinater til S-tog og letbane
+**Globale faktorer (samme for alle huse):**
+- **Energiklasse** (10 point max): A=10, B=8, C=6, D=4, E=2, F/G=0, UNKNOWN=3
+- **Afstand til tog** (10 point max): Beregnet via GPS koordinater til S-tog og letbane
 
-**Medium vægt faktorer:**
-- **Grundstørrelse** (10 point max): 0-500m²=0-5pt, 500-1500m²=5-10pt  
-- **Husstørrelse** (10 point max): Baseret på m² kategorier
-- **Priseffektivitet** (10 point max): Pris pr. m² sammenlignet med område
-- **Byggeår** (8 point max): Kategoriseret efter alder
+**Relative faktorer (sammenlignet inden for samme postnummer):**
+- **Grundstørrelse** (10 point max): Større grund = højere score relativt til området
+- **Husstørrelse** (10 point max): Større hus = højere score relativt til området  
+- **Priseffektivitet** (10 point max): Lavere m²-pris = højere score relativt til området
+- **Byggeår** (10 point max): Nyere hus = højere score relativt til området
+- **Kælderareal** (10 point max): Større kælder = højere score relativt til området
+- **Dage på marked** (10 point max): Færre dage = højere score relativt til området
 
-**Lav vægt faktorer:**
-- **Kælderareal** (2.5 point max): Bonus for kælderplads
-- **Dage på marked** (3 point max): Færre dage = højere score
+**Total max score**: 80 point
 
-**Total max score**: 73.5 point (tidligere 50)
+**Energimærke håndtering**: 
+- Boliga.dk har mærkelige værdier som G,H,I,J,K,L der faktisk er A-klasse
+- '-' eller manglende værdier bliver til UNKNOWN (3 point)
+- Alle værdier normaliseres til store bogstaver
 
 ## 🚀 Status opdatering
 
