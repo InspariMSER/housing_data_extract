@@ -279,6 +279,7 @@ df = df.withColumn("built_score",
 )
 
 # 4. Days on Market Score (Traditional - Low Weight) - ZIP CODE RELATIVE
+# Fewer days on market should get HIGHER score (rank 1 = fewest days = 10 points)
 df = df.withColumn("days_rank", F.dense_rank().over(zip_days_window))
 df = df.withColumn("days_max_rank", F.max("days_rank").over(Window.partitionBy("zip_code")))
 df = df.withColumn("days_market_score",
@@ -297,6 +298,7 @@ df = df.withColumn("size_score",
 )
 
 # 6. Price Efficiency Score (Modified Traditional - Medium Weight) - ZIP CODE RELATIVE
+# Lower price per m² should get HIGHER score (rank 1 = best price = 10 points)
 df = df.withColumn("price_rank", F.dense_rank().over(zip_price_per_m2_window))
 df = df.withColumn("price_max_rank", F.max("price_rank").over(Window.partitionBy("zip_code")))
 df = df.withColumn("price_score",

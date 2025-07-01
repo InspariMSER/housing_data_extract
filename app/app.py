@@ -52,7 +52,7 @@ with st.expander("ℹ️ Information om scoring systemet"):
     st.write("• **Togstation afstand**: Jo tættere på togstation, jo højere score")
     st.write("• **Grundstørrelse**: Større grund = højere score sammenlignet med andre i samme område")
     st.write("• **Husstørrelse**: Større hus = højere score sammenlignet med andre i samme område")
-    st.write("• **Pris effektivitet**: Lavere m²-pris = højere score sammenlignet med andre i samme område")
+    st.write("• **Pris effektivitet**: Lavere **pris per m²** = højere score sammenlignet med andre i samme område")
     st.write("• **Byggeår**: Nyere hus = højere score sammenlignet med andre i samme område")
     st.write("• **Kælderstørrelse**: Større kælder = højere score sammenlignet med andre i samme område")
     st.write("• **Dage på markedet**: Færre dage til salg = højere score sammenlignet med andre i samme område")
@@ -121,8 +121,10 @@ if selected_zip_codes:
     data_tab, scores_tab, seen_tab = st.tabs(["🏠 Boliger", "📊 Pointdetaljer", "🔍 Alllerede sete huse"])
     
     with data_tab:
+        st.info("💡 **Vigtigt**: Pris-scoren baseres på **pris per m²**, ikke samlet pris. Dette betyder at et stort hus med lav m²-pris kan score højere end et lille hus med høj m²-pris.")
+        
         # Main property information
-        property_columns = ['full_address', 'price', 'm2', 'rooms', 'built', 
+        property_columns = ['full_address', 'price', 'm2_price', 'm2', 'rooms', 'built', 
                           'energy_class', 'lot_size', 'basement_size', 'days_on_market', 'total_score']
         
         st.dataframe(
@@ -132,7 +134,8 @@ if selected_zip_codes:
             hide_index=True,
             column_config={
                 "total_score": st.column_config.NumberColumn("Samlet score", format="%.1f"),
-                "price": st.column_config.NumberColumn("Pris", format="%d"),
+                "price": st.column_config.NumberColumn("Samlet pris", format="%d"),
+                "m2_price": st.column_config.NumberColumn("Pris/m² (scored)", format="%d"),
                 "m2": st.column_config.NumberColumn("m²", format="%d"),
                 "rooms": st.column_config.NumberColumn("Værelser", format="%d"),
                 "built": st.column_config.TextColumn("Byggeår"),
@@ -173,7 +176,7 @@ if selected_zip_codes:
             use_container_width=True, 
             hide_index=True,
             column_config={
-                "score_price_efficiency": st.column_config.NumberColumn("Pris", format="%.1f"),
+                "score_price_efficiency": st.column_config.NumberColumn("Pris/m²", format="%.1f"),
                 "score_house_size": st.column_config.NumberColumn("Størrelse", format="%.1f"),
                 "score_build_year": st.column_config.NumberColumn("År", format="%.1f"),
                 "score_energy": st.column_config.NumberColumn("Energi", format="%.1f"),

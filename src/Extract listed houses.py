@@ -71,7 +71,6 @@ from typing import List, TypedDict
 import logging
 from enum import Enum
 from datetime import datetime
-from extract.utils import zipcodes_dict, property_type
 
 import requests
 import bs4  # type: ignore
