@@ -63,10 +63,6 @@ energy_udf = energy_class_score_udf()
 
 # COMMAND ----------
 
-spark = SparkSession.builder \
-    .appName("Transform Listings with Enhanced Scoring") \
-    .getOrCreate()
-
 # Select table, and select only the columns we want
 df = spark.table("mser_catalog.housing.listings")
 df = df.withColumn("full_address", F.concat_ws(" ", F.col("address_text"), F.col("house_number"), F.col("city")))
