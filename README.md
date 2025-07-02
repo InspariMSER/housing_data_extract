@@ -1,9 +1,6 @@
 # Housing Data Extract - Hus-søgningssystem
 
-Dette projekt skal hjælpe mig og min kæreste med at finde det## 📚 Teknisk Dokumentation
-
-- [`extraction-update-log.md`](docs/extraction-update-log.md): Detaljeret log over opdateringer til data extraction
-- [`boliga-api-documentation.md`](docs/boliga-api-documentation.md): Komplet dokumentation af boliga.dk's API strukturfekte hus i Aarhus-området. Systemet scraper boligdata fra boliga.dk, beregner en score baseret på vores præferencer, og præsenterer resultaterne gennem en interaktiv webapp.
+Dette projekt hjælper med at finde det perfekte hus i Aarhus-området. Systemet scraper boligdata fra boliga.dk, beregner en score baseret på vores præferencer, og præsenterer resultaterne gennem en interaktiv webapp.
 
 ## 🎯 Projektmål
 
@@ -11,30 +8,52 @@ Dette projekt skal hjælpe mig og min kæreste med at finde det## 📚 Teknisk D
 - **Boligtype**: Kun huse (ikke lejligheder, rækkehuse, etc.)
 - **Automatisering**: Daglig scraping og scoring af nye boliger
 - **Notifikationer**: Advarsler ved interessante nye boliger
-- **Målplatform**: Migrere fra Databricks til lokal kørsel
+- **Platform**: Lokal kørsel med DuckDB og Pandas
 
-## 🏗️ Nuværende arkitektur (Databricks)
+## 🏗️ Arkitektur (Lokal)
 
 ### Data Pipeline
-1. **Extract** (`extract/`): Scraper boliga.dk for 41 postnumre omkring Aarhus
-2. **Transform** (`transform/`): Beregner score baseret på byggeår, pris, størrelse, værelser og dage på markedet
-3. **App** (`app/`): Streamlit webapp til browsing og marking af sete huse
+1. **Extract** (`src/extract_listings_local.py`): Scraper boliga.dk for postnumre omkring Aarhus
+2. **Transform** (`src/transform_listings_local.py`): Beregner score baseret på byggeår, pris, størrelse, værelser og dage på markedet
+3. **App** (`app/app_local.py`): Streamlit webapp til browsing og marking af sete huse
+4. **Database** (`src/database_local.py`): DuckDB database management
+5. **Scheduler** (`scripts/scheduler.py`): Automated daily pipeline execution
+6. **Pipeline Runner** (`pipeline/run_pipeline.py`): Main pipeline orchestration
 
 ### Teknologi Stack
-- **Database**: Databricks Delta Lake
-- **Processing**: PySpark
-- **Frontend**: Streamlit
-- **Deployment**: Databricks Apps
+- **Database**: DuckDB (let og hurtig lokal database)
+- **Processing**: Pandas (dataframe processing)
+- **Scheduling**: APScheduler (Python scheduling)
+- **Frontend**: Streamlit (lokal webapp)
+- **Environment**: Python virtual environment
 
-## 🔄 Planlagt migrering til lokal kørsel
+## 🚀 Quick Start
 
-### Målarkitektur
-- **Database**: DuckDB (let og hurtig)
-- **Processing**: Pandas (simplere end Spark)
-- **Scheduling**: Python APScheduler + systemd service
-- **Notifikationer**: Gmail SMTP (gratis)
-- **Frontend**: Streamlit på localhost (lokalt deployment)
-- **Hosting**: Selvstændig server/computer i stedet for cloud platform
+### Kort opsætning:
+```bash
+# Clone repository
+git clone <repo-url>
+cd housing_data_extract
+
+# Setup virtual environment
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+pip install -r requirements.txt
+
+# Kør pipeline og start webapp (anbefalet første gang)
+python start.py full
+
+# Eller kør kun pipeline
+python start.py pipeline
+
+# Eller start kun webapp
+python start.py app
+
+# Eller start automated scheduler
+python start.py scheduler
+```
+
+Se [`LOCAL_SETUP.md`](LOCAL_SETUP.md) for detaljeret setup guide.
 
 ## 📊 Forbedret scoring algoritme (OPDATERET!)
 
@@ -62,11 +81,16 @@ Hver bolig scores nu på **8 parametre** med equal weighting (max 80 point):
 ## 🚀 Status opdatering
 
 ### ✅ Completeret:
-1. **Data extraction modernisering** - Alle nye felter ekstrakteret og valideret
-2. **Forbedret scoring algoritme** - Implementeret og integreret i pipeline
-3. **Streamlit app forbedringer** - Nye filtre og score breakdown visning
+1. **Migrering til lokal kørsel** - DuckDB og Pandas pipeline implementeret og testet
+2. **Data extraction modernisering** - Alle nye felter ekstrakteret og valideret
+3. **Forbedret scoring algoritme** - Implementeret og integreret i pipeline
+4. **Streamlit app forbedringer** - Lokal version med nye filtre og score breakdown
+5. **Repository cleanup** - Fjernet alle legacy Databricks filer og scripts
 
 ### 🔄 I gang:
+- Performance optimering af scraping
+- Email notifikationssystem
+- Automatisk deployment til produktionsserver
 
 ## 📋 Data eksempel fra boliga.dk
 
@@ -103,9 +127,51 @@ Hver bolig scores nu på **8 parametre** med equal weighting (max 80 point):
 
 1. ✅ **Opdater data extraction** til at inkludere alle relevante felter - **FULDFØRT**
 2. ✅ **Implementer forbedret scoring** med energimærke og afstand til tog - **FULDFØRT**
-3. **Migrer til DuckDB** og pandas-baseret processing - **NÆSTE OPGAVE**
+3. ✅ **Migrer til DuckDB** og pandas-baseret processing - **FULDFØRT**
 4. **Sæt notifikationssystem op** med email alerts
-5. **Optimér performance** og reducer kompleksitet
+5. **Implementer automatisk scheduling** på produktionsserver
+6. **Performance optimering** og memory usage forbedringer
+
+## 📁 Projekt struktur
+
+```
+housing_data_extract/
+├── start.py                      # 🎯 MAIN STARTUP SCRIPT
+├── README.md                     # Dette dokument
+├── LOCAL_SETUP.md               # Detaljeret setup guide
+├── requirements.txt             # Python dependencies
+│
+├── app/                         # 🖥️ Streamlit webapp
+│   ├── __init__.py
+│   └── app_local.py            # Streamlit interface
+│
+├── pipeline/                    # ⚙️ Data pipeline
+│   ├── __init__.py
+│   └── run_pipeline.py         # Pipeline orchestration
+│
+├── scripts/                     # 📜 Automation scripts
+│   ├── __init__.py
+│   └── scheduler.py            # Automated scheduling
+│
+├── src/                        # 🔧 Core modules
+│   ├── __init__.py
+│   ├── extract_listings_local.py   # Data extraction
+│   ├── transform_listings_local.py # Data transformation & scoring
+│   └── database_local.py           # DuckDB management
+│
+├── data/                       # 💾 Generated data
+│   └── housing.duckdb         # Local database (auto-generated)
+│
+├── logs/                       # 📝 Application logs (auto-generated)
+├── docs/                       # 📚 Technical documentation
+└── venv/                       # 🐍 Python virtual environment
+```
+
+### 🎯 Hovedkommandoer:
+- **`python start.py full`** - Kør pipeline + start webapp (anbefalet første gang)
+- **`python start.py pipeline`** - Kør kun data pipeline
+- **`python start.py app`** - Start kun webapp
+- **`python start.py scheduler`** - Start automated scheduler
 
 ## 📚 Teknisk Dokumentation
 

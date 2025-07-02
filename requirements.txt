@@ -1,0 +1,30 @@
+# Local housing data extract requirements
+# Core data processing
+pandas>=2.0.0
+duckdb>=0.10.0
+
+# Web scraping
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+
+# Web app
+streamlit>=1.28.0
+
+# Scheduling
+apscheduler>=3.10.0
+
+# Email notifications
+smtplib
+email-validator
+
+# Data visualization (optional)
+plotly>=5.17.0
+
+# Development and testing
+pytest>=7.4.0
+black>=23.9.0
+flake8>=6.1.0
+
+# Utilities
+python-dotenv>=1.0.0
+typing-extensions>=4.8.0
